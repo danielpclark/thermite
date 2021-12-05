@@ -105,7 +105,7 @@ module Thermite
       server_error = Net::HTTPServerError.new('1.1', 500, 'Internal Server Error')
       Net::HTTP.stubs(:get_response).returns(server_error)
 
-      assert_raises Net::HTTPServerException do
+      assert_raises Net::HTTPClientException do
         mock_module.download_binary_from_github_release
       end
     end

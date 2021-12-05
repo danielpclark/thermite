@@ -47,7 +47,7 @@ module Thermite
       when Net::HTTPClientError
         nil
       when Net::HTTPServerError
-        raise Net::HTTPServerException.new(response.message, response)
+        raise Net::HTTPClientException.new(response.message, response)
       when Net::HTTPFound, Net::HTTPPermanentRedirect
         http_get(response['location'], retries_left - 1)
       else
