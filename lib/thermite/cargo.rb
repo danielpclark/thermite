@@ -17,109 +17,111 @@
 # DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
 # OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-require 'mkmf'
+require 'rake/file_utils_ext'
+require 'thermite/executable'
 
 module Thermite
   #
-  # Cargo helpers
+  # Runs `cargo` commands for the Rust project described by a {Thermite::Config}.
   #
-  module Cargo
-    #
-    # Path to `cargo`. Can be overwritten by using the `CARGO` environment variable.
-    #
-    def cargo
-      @cargo ||= find_executable(ENV.fetch('CARGO', 'cargo'))
-    end
-
-    #
-    # Run `cargo` with the given `args` and return `STDOUT`.
-    #
-    def run_cargo(*args)
-      Dir.chdir(config.rust_toplevel_dir) do
-        sh cargo, *args
-      end
-    end
-
-    #
-    # Only `run_cargo` if it is found in the executable paths.
-    #
-    def run_cargo_if_exists(*args)
-      run_cargo(*args) if cargo
-    end
-
-    #
-    # Run `cargo rustc`, given a target (i.e., `release` [default] or `debug`).
-    #
-    def run_cargo_rustc(target)
-      cargo_args = %w[rustc]
-      cargo_args.push(*cargo_manifest_path_args)
-      cargo_args << '--release' if target == 'release'
-      cargo_args.push(*cargo_rustc_args)
-      run_cargo(*cargo_args)
-    end
-
-    #
-    # If the `cargo_workspace_member` option is set, the `--manifest-path` argument to `cargo`.
-    #
-    def cargo_manifest_path_args
-      return [] unless config.cargo_workspace_member
-
-      manifest = File.join(config.cargo_workspace_member, 'Cargo.toml')
-      ['--manifest-path', manifest]
-    end
-
-    #
-    # Inform the user about cargo if it doesn't exist.
-    #
-    # If `optional_rust_extension` is true, print message to STDERR. Otherwise, raise an exception.
-    #
-    def inform_user_about_cargo
-      raise cargo_required_msg unless options[:optional_rust_extension]
-
-      $stderr.write(cargo_recommended_msg)
-    end
-
-    #
-    # Message used when cargo is not found.
-    #
-    # `require_severity` is the verb that indicates how important Rust is to the library.
-    #
-    def cargo_msg(require_severity)
-      <<MESSAGE
-****
-Rust's Cargo is #{require_severity} to build this extension. Please install
-Rust and put it in the PATH, or set the CARGO environment variable appropriately.
-****
-MESSAGE
-    end
-
+  class Cargo
     #
     # Message used when cargo is required but not found.
     #
-    def cargo_required_msg
-      cargo_msg('required')
-    end
+    REQUIRED_MESSAGE = <<~MESSAGE
+      ****
+      Rust's Cargo is required to build this extension. Please install
+      Rust and put it in the PATH, or set the CARGO environment variable appropriately.
+      ****
+    MESSAGE
 
     #
     # Message used when cargo is recommended but not found.
     #
-    def cargo_recommended_msg
-      cargo_msg('recommended (but not required)')
+    RECOMMENDED_MESSAGE = <<~MESSAGE
+      ****
+      Rust's Cargo is recommended (but not required) to build this extension. Please install
+      Rust and put it in the PATH, or set the CARGO environment variable appropriately.
+      ****
+    MESSAGE
+
+    #
+    # The path to `cargo`, or `nil` if it was not found.
+    #
+    attr_reader :executable
+
+    #
+    # @param config [Thermite::Config]
+    # @param executable [String, nil] the path to `cargo`. Defaults to searching the `PATH` for
+    #                                 {Thermite::Config#cargo_executable_name}.
+    # @param shell [#sh] runs commands. Defaults to Rake's `sh`, which respects Rake's verbosity
+    #                    settings.
+    #
+    def initialize(config, executable: Executable.find(config.cargo_executable_name),
+                   shell: Rake::FileUtilsExt)
+      @config = config
+      @executable = executable
+      @shell = shell
+    end
+
+    #
+    # Whether `cargo` was found.
+    #
+    def available?
+      !@executable.nil?
+    end
+
+    #
+    # Runs `cargo` with the given `args` in {Thermite::Config#rust_toplevel_dir}.
+    #
+    # The `RUBY` environment variable is set to {Thermite::Config#ruby_executable}, so that build
+    # scripts which link to libruby (such as Rutie's) use the same Ruby that runs Thermite.
+    #
+    def run(*args)
+      Dir.chdir(@config.rust_toplevel_dir) do
+        @shell.sh({ 'RUBY' => @config.ruby_executable }, @executable, *args)
+      end
+    end
+
+    #
+    # Builds the Rust shared library via `cargo rustc`, given a Cargo profile (e.g., `release` or
+    # `debug`).
+    #
+    def build(profile)
+      args = ['rustc', *manifest_path_args]
+      args << '--release' if profile == 'release'
+      run(*args, *rustc_args)
+    end
+
+    #
+    # Runs `cargo clean`, if `cargo` is available.
+    #
+    def clean
+      run('clean', *manifest_path_args) if available?
+    end
+
+    #
+    # Runs `cargo test`, if `cargo` is available.
+    #
+    def test
+      run('test', *manifest_path_args) if available?
     end
 
     private
 
-    def cargo_rustc_args
-      if config.dynamic_linker_flags == '' || config.target_os == 'mingw32'
-        []
-      else
-        [
-          '--lib',
-          '--',
-          '-C',
-          "link-args=#{config.dynamic_linker_flags}"
-        ]
-      end
+    #
+    # If the `cargo_workspace_member` option is set, the `--manifest-path` argument to `cargo`.
+    #
+    def manifest_path_args
+      return [] unless @config.cargo_workspace_member
+
+      ['--manifest-path', File.join(@config.cargo_workspace_member, 'Cargo.toml')]
+    end
+
+    def rustc_args
+      return [] if @config.dynamic_linker_flags.empty? || @config.target_os == 'mingw32'
+
+      ['--lib', '--', '-C', "link-args=#{@config.dynamic_linker_flags}"]
     end
   end
 end

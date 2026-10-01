@@ -17,37 +17,54 @@
 # DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
 # OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+require 'test_helper'
+require 'thermite/executable'
+
 module Thermite
-  #
-  # Downloads a pre-built Rust shared library from a custom URI.
-  #
-  class CustomBinary
-    #
-    # @param config [Thermite::Config]
-    # @param downloader [#install] downloads and installs a tarball (see {Thermite::Downloader}).
-    #
-    def initialize(config, downloader:)
-      @config = config
-      @downloader = downloader
+  class ExecutableTest < Minitest::Test
+    def setup
+      @dir = Dir.mktmpdir('thermite_executable')
     end
 
-    #
-    # Downloads a Rust binary using a custom URI format, given the target OS and architecture.
-    #
-    # Requires the `binary_uri_format` option to be set. The version of the binary is determined by
-    # the crate version given in `Cargo.toml`.
-    #
-    # @return [Boolean] whether a binary was found and installed.
-    #
-    def download
-      return false unless @config.binary_uri_format
+    def teardown
+      FileUtils.rm_rf(@dir)
+    end
 
-      version = @config.crate_version
-      uri = format(@config.binary_uri_format,
-                   filename: @config.tarball_filename(version),
-                   version: version)
+    def test_find_in_path
+      executable = create_file('tool', 0o755)
 
-      @downloader.install(uri, "Downloading compiled version (#{version})")
+      assert_equal executable, Thermite::Executable.find('tool', path: search_path)
+    end
+
+    def test_find_absolute_path
+      executable = create_file('tool', 0o755)
+
+      assert_equal executable, Thermite::Executable.find(executable, path: '')
+    end
+
+    def test_ignores_files_that_are_not_executable
+      skip 'File modes are not enforced on Windows' if Gem.win_platform?
+      create_file('tool', 0o644)
+
+      assert_nil Thermite::Executable.find('tool', path: search_path)
+    end
+
+    def test_missing_executable
+      assert_nil Thermite::Executable.find('tool', path: search_path)
+    end
+
+    private
+
+    def search_path
+      [File.join(@dir, 'missing'), @dir].join(File::PATH_SEPARATOR)
+    end
+
+    def create_file(name, mode)
+      filename = File.join(@dir, name)
+      File.write(filename, '')
+      File.chmod(mode, filename)
+
+      filename
     end
   end
 end

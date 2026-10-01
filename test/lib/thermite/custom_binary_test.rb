@@ -17,43 +17,41 @@
 # DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
 # OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-require 'tmpdir'
+require 'fakes'
 require 'test_helper'
 require 'thermite/custom_binary'
-require 'thermite/util'
 
 module Thermite
   class CustomBinaryTest < Minitest::Test
-    include Thermite::ModuleTester
-
-    class Tester
-      include Thermite::CustomBinary
-      include Thermite::TestHelper
-      include Thermite::Util
-    end
+    include Thermite::ConfigHelper
 
     def test_no_downloading_when_binary_uri_is_falsey
-      mock_module(binary_uri_format: false)
-      mock_module.expects(:http_get).never
+      downloader = FakeDownloader.new
 
-      assert !mock_module.download_binary_from_custom_uri
+      refute custom_binary(build_config(options: { binary_uri_format: false }), downloader).download
+      assert_empty downloader.installed
     end
 
     def test_download_binary_from_custom_uri
-      mock_module(binary_uri_format: 'http://example.com/download/%<version>s/%<filename>s')
-      mock_module.config.stubs(:toml).returns(package: { version: '4.5.6' })
-      Net::HTTP.stubs(:get_response).returns('location' => 'redirect')
-      mock_module.stubs(:http_get).returns('tarball')
-      mock_module.expects(:unpack_tarball).once
-      mock_module.expects(:prepare_downloaded_library).once
+      uri_format = 'http://example.com/download/%<version>s/%<filename>s'
+      config = build_config(options: { binary_uri_format: uri_format })
+      uri = "http://example.com/download/4.5.6/#{config.tarball_filename('4.5.6')}"
+      downloader = FakeDownloader.new([uri])
 
-      assert mock_module.download_binary_from_custom_uri
+      assert custom_binary(config, downloader).download
+      assert_equal [[uri, 'Downloading compiled version (4.5.6)']], downloader.installed
+    end
+
+    def test_download_binary_from_custom_uri_not_found
+      config = build_config(options: { binary_uri_format: 'http://example.com/%<filename>s' })
+
+      refute custom_binary(config, FakeDownloader.new).download
     end
 
     private
 
-    def described_class
-      Tester
+    def custom_binary(config, downloader)
+      Thermite::CustomBinary.new(config, downloader: downloader)
     end
   end
 end

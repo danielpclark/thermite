@@ -19,35 +19,51 @@
 
 module Thermite
   #
-  # Downloads a pre-built Rust shared library from a custom URI.
+  # On macOS, rewrites the libruby path recorded in the Rust shared library, so that a library
+  # built on one machine can be installed on another. On other platforms, does nothing.
   #
-  class CustomBinary
+  class InstallNameTool
+    #
+    # Placeholder for the libruby path while the library is packaged.
+    #
+    LIBRUBY_PLACEHOLDER = '@libruby_path@'
+
     #
     # @param config [Thermite::Config]
-    # @param downloader [#install] downloads and installs a tarball (see {Thermite::Downloader}).
+    # @param runner [#system] runs the `install_name_tool` command. Defaults to `Kernel`.
     #
-    def initialize(config, downloader:)
+    def initialize(config, runner: Kernel)
       @config = config
-      @downloader = downloader
+      @runner = runner
     end
 
     #
-    # Downloads a Rust binary using a custom URI format, given the target OS and architecture.
+    # Replaces the local libruby path with a placeholder, before the library is packaged.
     #
-    # Requires the `binary_uri_format` option to be set. The version of the binary is determined by
-    # the crate version given in `Cargo.toml`.
-    #
-    # @return [Boolean] whether a binary was found and installed.
-    #
-    def download
-      return false unless @config.binary_uri_format
+    def before_packaging
+      return unless @config.darwin?
 
-      version = @config.crate_version
-      uri = format(@config.binary_uri_format,
-                   filename: @config.tarball_filename(version),
-                   version: version)
+      install_name_tool('-change', @config.libruby_path, LIBRUBY_PLACEHOLDER)
+    end
 
-      @downloader.install(uri, "Downloading compiled version (#{version})")
+    #
+    # Replaces the placeholder with the local libruby path, after a packaged library is unpacked.
+    #
+    def after_unpacking
+      return unless @config.darwin?
+
+      install_name_tool('-id', library_path)
+      install_name_tool('-change', LIBRUBY_PLACEHOLDER, @config.libruby_path)
+    end
+
+    private
+
+    def library_path
+      @config.ruby_extension_path
+    end
+
+    def install_name_tool(*args)
+      @runner.system('install_name_tool', *args, library_path)
     end
   end
 end

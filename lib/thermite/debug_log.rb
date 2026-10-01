@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 #
-# Copyright (c) 2018 Mark Lee and contributors
+# Copyright (c) 2016 Mark Lee and contributors
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
 # associated documentation files (the "Software"), to deal in the Software without restriction,
@@ -19,32 +19,28 @@
 
 module Thermite
   #
-  # [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (2.0.0) regular expression.
+  # Writes debug messages to a file, if a filename is given. Otherwise, messages are discarded.
   #
-  module SemVer
+  # The file is only created once the first message is written.
+  #
+  class DebugLog
     #
-    # Valid version number part (major/minor/patch).
+    # @param filename [String, nil] the file to write messages to (see
+    #                               {Thermite::Config#debug_filename}).
     #
-    NUMERIC = '(?:0|[1-9]\d*)'
+    def initialize(filename)
+      @filename = filename
+    end
 
     #
-    # Valid identifier for pre-release versions or build metadata.
+    # Writes `msg`, followed by a newline, to the debug file (if any).
     #
-    IDENTIFIER = '[-0-9A-Za-z][-0-9A-Za-z.]*'
+    def debug(msg)
+      return unless @filename
 
-    #
-    # Version pre-release section, including the hyphen.
-    #
-    PRERELEASE = "-#{IDENTIFIER}"
-
-    #
-    # Version build metadata section, including the plus sign.
-    #
-    BUILD_METADATA = "\\+#{IDENTIFIER}"
-
-    #
-    # Semantic version-compliant regular expression.
-    #
-    VERSION = "v?#{NUMERIC}\.#{NUMERIC}\.#{NUMERIC}(?:#{PRERELEASE})?(?:#{BUILD_METADATA})?"
+      @file ||= File.open(@filename, 'w')
+      @file.write("#{msg}\n")
+      @file.flush
+    end
   end
 end

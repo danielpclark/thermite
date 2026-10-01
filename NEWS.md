@@ -2,9 +2,32 @@
 
 ## Unreleased
 
+### Added
+
+* `cargo` is run with the `RUBY` environment variable set to the Ruby running Thermite (unless it
+  is already set), so that Rutie and `rb-sys` build scripts link to the right libruby
+* An opt-in integration test that builds, tests, packages and loads a Rutie 0.10.2 extension
+
 ### Changed
 
 * The default `git_tag_regex` conforms more to the semantic versioning 2.0.0 spec (#46)
+* Ruby 2.5 or later is required (the oldest Ruby supported by Rutie 0.10)
+* The helper modules that `Thermite::Tasks` included (`Cargo`, `CustomBinary`,
+  `GithubReleaseBinary`, `Package` and `Util`) are replaced by classes that are given their
+  dependencies explicitly. Code that included those modules, or called their methods on a
+  `Thermite::Tasks` object, needs to use the new classes instead. `Thermite::Tasks.new`,
+  `Thermite::Tasks#config`, `Thermite::Tasks#options`, `Thermite::Config.new` and
+  `Thermite::Fiddle.load_module` are unchanged
+* `Thermite::Config` applies the `package.metadata.thermite` section of `Cargo.toml` itself, so
+  `Thermite::Fiddle.load_module` now respects settings such as `ruby_extension_dir` made there
+* `Thermite::Tasks.new` no longer modifies the options hash passed to it
+* `cargo` is found without `mkmf`, so no `checking for cargo...` output or `mkmf.log` is produced
+
+### Fixed
+
+* Too many HTTP redirects raised a `NameError` instead of a redirect error
+* All HTTP redirect types (including relative `Location` headers) are followed
+* `install_name_tool` is run without a shell (`shellwords` was used without being required)
 
 ## [0.13.0] - 2017-10-05
 

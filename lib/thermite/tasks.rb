@@ -19,12 +19,15 @@
 
 require 'fileutils'
 require 'rake/tasklib'
+require 'thermite/builder'
 require 'thermite/cargo'
 require 'thermite/config'
 require 'thermite/custom_binary'
+require 'thermite/debug_log'
+require 'thermite/downloader'
 require 'thermite/github_release_binary'
+require 'thermite/http_client'
 require 'thermite/package'
-require 'thermite/util'
 
 #
 # Helpers for Rust-based Ruby extensions.
@@ -38,13 +41,10 @@ module Thermite
   # * `thermite:test`
   # * `thermite:tarball`
   #
+  # This class only wires together the objects that do the work and defines the Rake tasks that
+  # call them.
+  #
   class Tasks < Rake::TaskLib
-    include Thermite::Cargo
-    include Thermite::CustomBinary
-    include Thermite::GithubReleaseBinary
-    include Thermite::Package
-    include Thermite::Util
-
     #
     # The configuration used for the Rake tasks. See: {Thermite::Config}
     #
@@ -95,7 +95,9 @@ module Thermite
     # to this are `cargo_project_path` and `cargo_workspace_member`, since they are both used to
     # find the `Cargo.toml` file.
     #
-    attr_reader :options
+    def options
+      config.options
+    end
 
     #
     # Define the Thermite tasks with the given configuration parameters (see {#options}).
@@ -107,9 +109,13 @@ module Thermite
     # ```
     #
     def initialize(options = {})
-      @options = options
+      super()
       @config = Config.new(options)
-      @options.merge!(@config.toml_config)
+      logger = DebugLog.new(@config.debug_filename)
+      @cargo = Cargo.new(@config)
+      @package = Package.new(@config, logger: logger)
+      @builder = Builder.new(@config, cargo: @cargo, binary_sources: binary_sources(logger))
+
       define_build_task
       define_clean_task
       define_test_task
@@ -118,33 +124,34 @@ module Thermite
 
     private
 
+    def binary_sources(logger)
+      http = HTTPClient.new
+      downloader = Downloader.new(http: http, package: @package, logger: logger)
+      [
+        CustomBinary.new(@config, downloader: downloader),
+        GithubReleaseBinary.new(@config, downloader: downloader, http: http)
+      ]
+    end
+
     def define_build_task
       desc 'Build or download the Rust shared library: CARGO_PROFILE controls Cargo profile'
       task 'thermite:build' do
-        # if cargo found, build. Otherwise, grab binary (when github_releases is enabled).
-        if cargo
-          profile = ENV.fetch('CARGO_PROFILE', 'release')
-          run_cargo_rustc(profile)
-          FileUtils.cp(config.cargo_target_path(profile, config.cargo_shared_library),
-                       config.ruby_extension_path)
-        elsif !download_binary_from_custom_uri && !download_binary_from_github_release
-          inform_user_about_cargo
-        end
+        @builder.build
       end
     end
 
     def define_clean_task
       desc 'Clean up after thermite:build task'
       task 'thermite:clean' do
-        FileUtils.rm(config.ruby_extension_path, force: true)
-        run_cargo_if_exists 'clean', *cargo_manifest_path_args
+        FileUtils.rm(@config.ruby_extension_path, force: true)
+        @cargo.clean
       end
     end
 
     def define_test_task
       desc 'Run Rust testsuite'
       task 'thermite:test' do
-        run_cargo_if_exists 'test', *cargo_manifest_path_args
+        @cargo.test
       end
     end
 
@@ -152,7 +159,7 @@ module Thermite
       namespace :thermite do
         desc 'Package rust library in a tarball'
         task tarball: %w[thermite:build] do
-          build_package
+          @package.build
         end
       end
     end

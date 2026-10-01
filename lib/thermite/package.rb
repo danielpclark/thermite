@@ -19,54 +19,67 @@
 
 require 'archive/tar/minitar'
 require 'rubygems/package'
+require 'thermite/install_name_tool'
 require 'zlib'
 
 module Thermite
   #
-  # Helpers to package the Rust library into a gzipped tarball.
+  # Packages the Rust shared library into a gzipped tarball, and installs it from one.
   #
-  module Package
+  class Package
     #
-    # Builds a tarball of the Rust-compiled shared library.
+    # @param config [Thermite::Config]
+    # @param logger [#debug] receives debug messages (see {Thermite::DebugLog}).
+    # @param install_name_tool [Thermite::InstallNameTool] adjusts the library's libruby path.
     #
-    def build_package
-      filename = config.tarball_filename(config.toml[:package][:version])
-      relative_library_path = config.ruby_extension_path.sub("#{config.ruby_toplevel_dir}/", '')
-      prepare_built_library
-      Zlib::GzipWriter.open(filename) do |tgz|
-        Dir.chdir(config.ruby_toplevel_dir) do
-          Archive::Tar::Minitar.pack(relative_library_path, tgz)
-        end
-      end
+    def initialize(config, logger:, install_name_tool: InstallNameTool.new(config))
+      @config = config
+      @logger = logger
+      @install_name_tool = install_name_tool
     end
 
     #
-    # Unpack a gzipped tarball stream (specified by `tgz`) into the current
-    # working directory.
+    # Builds a tarball of the Rust-compiled shared library, in the current working directory.
     #
-    def unpack_tarball(tgz)
-      Dir.chdir(config.ruby_toplevel_dir) do
+    # @return [String] the filename of the tarball.
+    #
+    def build
+      filename = @config.tarball_filename(@config.crate_version)
+      relative_library_path = @config.ruby_extension_path.sub("#{@config.ruby_toplevel_dir}/", '')
+      @install_name_tool.before_packaging
+      Zlib::GzipWriter.open(filename) do |tgz|
+        Dir.chdir(@config.ruby_toplevel_dir) do
+          Archive::Tar::Minitar.pack(relative_library_path, tgz)
+        end
+      end
+
+      filename
+    end
+
+    #
+    # Unpacks a gzipped tarball stream (specified by `tgz`) into
+    # {Thermite::Config#ruby_toplevel_dir}, and prepares the unpacked library for use on this
+    # machine.
+    #
+    def install(tgz)
+      unpack(tgz)
+      @install_name_tool.after_unpacking
+    end
+
+    #
+    # Unpacks a gzipped tarball stream (specified by `tgz`) into
+    # {Thermite::Config#ruby_toplevel_dir}.
+    #
+    def unpack(tgz)
+      Dir.chdir(@config.ruby_toplevel_dir) do
         each_compressed_file(tgz) do |path, entry|
-          debug "Unpacking file: #{path}"
+          @logger.debug "Unpacking file: #{path}"
           File.open(path, 'wb') do |f|
             f.write(entry.read)
           end
         end
       end
     end
-
-    # :nocov:
-
-    def prepare_downloaded_library
-      return unless config.target_os.start_with?('darwin')
-
-      libruby_path = Shellwords.escape(config.libruby_path)
-      library_path = Shellwords.escape(config.ruby_extension_path)
-      `install_name_tool -id #{library_path} #{library_path}`
-      `install_name_tool -change @libruby_path@ #{libruby_path} #{library_path}`
-    end
-
-    # :nocov:
 
     private
 
@@ -76,20 +89,11 @@ module Thermite
           tar.each do |entry|
             path = entry.header.name
             next if path.end_with?('/')
+
             yield path, entry
           end
         end
       end
-    end
-
-    # :nocov:
-
-    def prepare_built_library
-      return unless config.target_os.start_with?('darwin')
-
-      libruby_path = Shellwords.escape(config.libruby_path)
-      library_path = Shellwords.escape(config.ruby_extension_path)
-      `install_name_tool -change #{libruby_path} @libruby_path@ #{library_path}`
     end
   end
 end

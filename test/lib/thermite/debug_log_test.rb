@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 #
-# Copyright (c) 2016, 2017 Mark Lee and contributors
+# Copyright (c) 2016 Mark Lee and contributors
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
 # associated documentation files (the "Software"), to deal in the Software without restriction,
@@ -17,39 +17,31 @@
 # DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
 # OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-require 'tempfile'
 require 'test_helper'
-require 'thermite/util'
+require 'thermite/debug_log'
 
 module Thermite
-  class UtilTest < Minitest::Test
-    include Thermite::ModuleTester
-
-    class Tester
-      include Thermite::TestHelper
-      include Thermite::Util
+  class DebugLogTest < Minitest::Test
+    def test_debug_without_filename
+      Dir.mktmpdir do |dir|
+        Dir.chdir(dir) do
+          Thermite::DebugLog.new(nil).debug('will not exist')
+          assert_empty Dir.children(dir)
+        end
+      end
     end
 
-    def test_debug
-      stub_debug_filename(nil)
-      mock_module.debug('will not exist')
-      debug_file = Tempfile.new('thermite_test')
-      stub_debug_filename(debug_file.path)
-      mock_module.debug('some message')
-      mock_module.instance_variable_get('@debug').flush
-      debug_file.rewind
-      assert_equal "some message\n", debug_file.read
-    ensure
-      debug_file.close
-      debug_file.unlink
-    end
+    def test_debug_with_filename
+      Dir.mktmpdir do |dir|
+        filename = File.join(dir, 'debug.log')
+        log = Thermite::DebugLog.new(filename)
 
-    def stub_debug_filename(value)
-      mock_module.config.stubs(:debug_filename).returns(value)
-    end
+        refute File.exist?(filename)
+        log.debug('some message')
+        log.debug('another message')
 
-    def described_class
-      Tester
+        assert_equal "some message\nanother message\n", File.read(filename)
+      end
     end
   end
 end
