@@ -17,144 +17,106 @@
 # DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
 # OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-require 'tmpdir'
+require 'fakes'
 require 'test_helper'
 require 'thermite/github_release_binary'
-require 'thermite/util'
 
 module Thermite
   class GithubReleaseBinaryTest < Minitest::Test
-    include Thermite::ModuleTester
+    include Thermite::ConfigHelper
 
-    class Tester
-      include Thermite::GithubReleaseBinary
-      include Thermite::TestHelper
-      include Thermite::Util
-    end
+    PROJECT_URI = 'https://github.com/user/project'
 
     def test_no_downloading_when_github_releases_is_false
-      mock_module(github_releases: false)
-      mock_module.expects(:download_latest_binary_from_github_release).never
-      mock_module.expects(:download_cargo_version_from_github_release).never
+      config = build_config(options: { github_releases: false }, cargo_toml: package_toml)
+      downloader = FakeDownloader.new
 
-      assert !mock_module.download_binary_from_github_release
-    end
-
-    def test_github_release_type_defaults_to_cargo
-      mock_module(github_releases: true)
-      mock_module.expects(:download_latest_binary_from_github_release).never
-      mock_module.expects(:download_cargo_version_from_github_release).once
-
-      mock_module.download_binary_from_github_release
+      refute github_release_binary(config, downloader).download
+      assert_empty downloader.installed
     end
 
     def test_download_cargo_version_from_github_release
-      mock_module(github_releases: true)
-      mock_module.config.stubs(:toml).returns(package: { version: '4.5.6' })
-      stub_github_download_uri('v4.5.6')
-      Net::HTTP.stubs(:get_response).returns('location' => 'redirect')
-      mock_module.stubs(:http_get).returns('tarball')
-      mock_module.expects(:unpack_tarball).once
-      mock_module.expects(:prepare_downloaded_library).once
+      config = build_config(options: { github_releases: true }, cargo_toml: package_toml)
+      uri = release_uri(config, 'v4.5.6', '4.5.6')
+      downloader = FakeDownloader.new([uri])
 
-      assert mock_module.download_binary_from_github_release
+      assert github_release_binary(config, downloader).download
+      assert_equal [[uri, 'Downloading compiled version (4.5.6) from GitHub']], downloader.installed
     end
 
     def test_download_cargo_version_from_github_release_with_custom_git_tag_format
-      mock_module(github_releases: true, git_tag_format: 'VER_%s')
-      mock_module.config.stubs(:toml).returns(package: { version: '4.5.6' })
-      stub_github_download_uri('VER_4.5.6')
-      Net::HTTP.stubs(:get_response).returns('location' => 'redirect')
-      mock_module.stubs(:http_get).returns('tarball')
-      mock_module.expects(:unpack_tarball).once
-      mock_module.expects(:prepare_downloaded_library).once
+      config = build_config(options: { github_releases: true, git_tag_format: 'VER_%s' },
+                            cargo_toml: package_toml)
+      uri = release_uri(config, 'VER_4.5.6', '4.5.6')
 
-      assert mock_module.download_binary_from_github_release
+      assert github_release_binary(config, FakeDownloader.new([uri])).download
+    end
+
+    def test_download_cargo_version_from_github_release_not_found
+      config = build_config(options: { github_releases: true }, cargo_toml: package_toml)
+
+      refute github_release_binary(config, FakeDownloader.new).download
     end
 
     def test_download_cargo_version_from_github_release_with_no_repository
-      mock_module(github_releases: true)
-      mock_module.config.stubs(:toml).returns(package: { version: '4.5.6' })
+      config = build_config(options: { github_releases: true })
 
       assert_raises KeyError do
-        mock_module.download_binary_from_github_release
-      end
-    end
-
-    def test_download_cargo_version_from_github_release_with_client_error
-      mock_module(github_releases: true)
-      mock_module.config.stubs(:toml).returns(
-        package: {
-          repository: 'test/test',
-          version: '4.5.6'
-        }
-      )
-      Net::HTTP.stubs(:get_response).returns(Net::HTTPClientError.new('1.1', 403, 'Forbidden'))
-
-      assert !mock_module.download_binary_from_github_release
-    end
-
-    def test_download_cargo_version_from_github_release_with_server_error
-      mock_module(github_releases: true)
-      mock_module.config.stubs(:toml).returns(
-        package: {
-          repository: 'test/test',
-          version: '4.5.6'
-        }
-      )
-      server_error = Net::HTTPServerError.new('1.1', 500, 'Internal Server Error')
-      Net::HTTP.stubs(:get_response).returns(server_error)
-
-      assert_raises Net::HTTPClientException do
-        mock_module.download_binary_from_github_release
+        github_release_binary(config, FakeDownloader.new).download
       end
     end
 
     def test_download_latest_binary_from_github_release
-      mock_module(github_releases: true, github_release_type: 'latest', git_tag_regex: 'v(.*)_rust')
-      stub_releases_atom
-      mock_module.stubs(:download_versioned_github_release_binary).returns(StringIO.new('tarball'))
-      mock_module.expects(:unpack_tarball).once
-      mock_module.expects(:prepare_downloaded_library).once
+      config = latest_config('v(.*)_rust')
+      uri = release_uri(config, 'v0.1.11_rust', '0.1.11')
+      downloader = FakeDownloader.new([uri])
 
-      assert mock_module.download_binary_from_github_release
+      assert github_release_binary(config, downloader, releases_feed).download
+      assert_equal [release_uri(config, 'v0.1.12_rust', '0.1.12'), uri],
+                   downloader.installed.map(&:first)
     end
 
     def test_download_latest_binary_from_github_release_no_releases_match_regex
-      mock_module(github_releases: true, github_release_type: 'latest')
-      stub_releases_atom
-      mock_module.expects(:github_download_uri).never
+      downloader = FakeDownloader.new
 
-      assert !mock_module.download_binary_from_github_release
+      refute github_release_binary(latest_config, downloader, releases_feed).download
+      assert_empty downloader.installed
     end
 
     def test_download_latest_binary_from_github_release_no_tarball_found
-      mock_module(github_releases: true, github_release_type: 'latest', git_tag_regex: 'v(.*)_rust')
-      stub_releases_atom
-      mock_module.stubs(:download_versioned_github_release_binary).returns(nil)
-      mock_module.expects(:unpack_tarball).never
-      mock_module.expects(:prepare_downloaded_library).never
+      downloader = FakeDownloader.new
 
-      assert !mock_module.download_binary_from_github_release
+      refute github_release_binary(latest_config('v(.*)_rust'), downloader, releases_feed).download
+      assert_equal 2, downloader.installed.size
+    end
+
+    def test_download_latest_binary_from_github_release_without_feed
+      refute github_release_binary(latest_config('v(.*)_rust'), FakeDownloader.new).download
     end
 
     private
 
-    def described_class
-      Tester
+    def github_release_binary(config, downloader, http = FakeHTTP.new)
+      Thermite::GithubReleaseBinary.new(config, downloader: downloader, http: http)
     end
 
-    def stub_github_download_uri(tag)
-      uri = 'https://github.com/user/project/downloads/project-4.5.6.tar.gz'
-      mock_module.expects(:github_download_uri).with(tag, '4.5.6').returns(uri)
+    def latest_config(git_tag_regex = nil)
+      options = { github_releases: true, github_release_type: 'latest' }
+      options[:git_tag_regex] = git_tag_regex if git_tag_regex
+      build_config(options: options, cargo_toml: package_toml)
     end
 
-    def stub_releases_atom
+    def package_toml
+      "[package]\nname = \"project\"\nversion = \"4.5.6\"\nrepository = \"#{PROJECT_URI}\"\n"
+    end
+
+    def release_uri(config, tag, version)
+      "#{PROJECT_URI}/releases/download/#{tag}/#{config.tarball_filename(version)}"
+    end
+
+    def releases_feed
       atom = File.read(fixtures_path('github', 'releases.atom'))
-      project_uri = 'https://github.com/user/project'
-      releases_uri = "#{project_uri}/releases.atom"
-      mock_module.config.stubs(:toml).returns(package: { repository: project_uri })
-      mock_module.expects(:http_get).with(releases_uri).returns(atom)
+      FakeHTTP.new("#{PROJECT_URI}/releases.atom" => atom)
     end
   end
 end

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 #
-# Copyright (c) 2018 Mark Lee and contributors
+# Copyright (c) 2016 Mark Lee and contributors
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
 # associated documentation files (the "Software"), to deal in the Software without restriction,
@@ -19,32 +19,40 @@
 
 module Thermite
   #
-  # [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (2.0.0) regular expression.
+  # Stands in for {Thermite::Downloader}, recording the URIs it is asked to install.
   #
-  module SemVer
-    #
-    # Valid version number part (major/minor/patch).
-    #
-    NUMERIC = '(?:0|[1-9]\d*)'
+  class FakeDownloader
+    attr_reader :installed
 
     #
-    # Valid identifier for pre-release versions or build metadata.
+    # `available_uris` are the URIs that "exist"; installing any other URI returns `false`.
     #
-    IDENTIFIER = '[-0-9A-Za-z][-0-9A-Za-z.]*'
+    def initialize(available_uris = [])
+      @available_uris = available_uris
+      @installed = []
+    end
 
-    #
-    # Version pre-release section, including the hyphen.
-    #
-    PRERELEASE = "-#{IDENTIFIER}"
+    def install(uri, announcement)
+      @installed << [uri, announcement]
+      @available_uris.include?(uri)
+    end
+  end
 
-    #
-    # Version build metadata section, including the plus sign.
-    #
-    BUILD_METADATA = "\\+#{IDENTIFIER}"
+  #
+  # Stands in for {Thermite::HTTPClient}, serving fixed responses.
+  #
+  class FakeHTTP
+    attr_reader :requested
 
-    #
-    # Semantic version-compliant regular expression.
-    #
-    VERSION = "v?#{NUMERIC}\.#{NUMERIC}\.#{NUMERIC}(?:#{PRERELEASE})?(?:#{BUILD_METADATA})?"
+    def initialize(responses = {})
+      @responses = responses
+      @requested = []
+    end
+
+    def get(uri)
+      @requested << uri
+      body = @responses[uri]
+      body && StringIO.new(body)
+    end
   end
 end

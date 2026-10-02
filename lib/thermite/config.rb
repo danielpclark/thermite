@@ -17,44 +17,121 @@
 # DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
 # OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-require 'fileutils'
 require 'rbconfig'
 require 'thermite/semver'
 require 'tomlrb'
 
 module Thermite
   #
-  # Configuration helper
+  # Configuration for building, packaging and loading a Rust-based Ruby extension.
+  #
+  # Every value that Thermite reads from the outside world (task options, `Cargo.toml`, environment
+  # variables and `RbConfig`) is read here, so that the other Thermite classes only need to be
+  # handed a `Config` object.
   #
   class Config
     #
+    # The default git tag regular expression (semantic versioning format).
+    #
+    DEFAULT_TAG_REGEX = /^(#{Thermite::SemVer::VERSION})$/.freeze
+
+    #
+    # Options that locate `Cargo.toml`, and therefore cannot be overridden by it.
+    #
+    CARGO_LOCATION_OPTIONS = %i[cargo_project_path cargo_workspace_member].freeze
+
+    #
     # Creates a new configuration object.
     #
-    # `options` is the same as the {Thermite::Tasks#initialize} parameter.
+    # @param options [Hash] the same as the {Thermite::Tasks#initialize} parameter.
+    # @param env [#[], #fetch, #key?] environment variables. Defaults to `ENV`.
+    # @param rbconfig [Hash] Ruby build configuration. Defaults to `RbConfig::CONFIG`.
     #
-    def initialize(options = {})
-      @options = options
+    # `env` and `rbconfig` are positional rather than keyword parameters, so that
+    # `Config.new(cargo_project_path: 'rust')` keeps treating the hash as `options`.
+    #
+    def initialize(options = {}, env = ENV, rbconfig = RbConfig::CONFIG)
+      @task_options = options
+      @env = env
+      @rbconfig = rbconfig
+    end
+
+    #
+    # The task options, with the values from the `package.metadata.thermite` section of
+    # `Cargo.toml` taking precedence (except for {CARGO_LOCATION_OPTIONS}).
+    #
+    def options
+      @options ||= @task_options.merge(overridable_toml_config)
     end
 
     #
     # Location to emit debug output, if not `nil`. Defaults to `nil`.
     #
     def debug_filename
-      @debug_filename ||= ENV['THERMITE_DEBUG_FILENAME']
+      @env['THERMITE_DEBUG_FILENAME']
     end
 
     #
-    # The file extension of the compiled shared Rust library.
+    # The name (or path) of the `cargo` executable. Can be set via the `CARGO` environment variable.
     #
-    def shared_ext
-      @shared_ext ||= begin
-        if dlext == 'bundle'
-          'dylib'
-        elsif Gem.win_platform?
-          'dll'
-        else
-          dlext
-        end
+    def cargo_executable_name
+      @env.fetch('CARGO', 'cargo')
+    end
+
+    #
+    # The Ruby interpreter that Rust build scripts (e.g., Rutie's) should build against. Can be set
+    # via the `RUBY` environment variable. Defaults to the currently running interpreter.
+    #
+    def ruby_executable
+      @env.fetch('RUBY') do
+        File.join(@rbconfig['bindir'], "#{@rbconfig['ruby_install_name']}#{@rbconfig['EXEEXT']}")
+      end
+    end
+
+    #
+    # The Cargo profile to build with. Can be set via the `CARGO_PROFILE` environment variable.
+    # Defaults to `release`.
+    #
+    def cargo_profile
+      @env.fetch('CARGO_PROFILE', 'release')
+    end
+
+    #
+    # Whether the `optional_rust_extension` option is set.
+    #
+    def optional_rust_extension?
+      options.fetch(:optional_rust_extension, false) ? true : false
+    end
+
+    #
+    # Whether the `github_releases` option is set.
+    #
+    def github_releases?
+      options.fetch(:github_releases, false) ? true : false
+    end
+
+    #
+    # The `github_release_type` option. Defaults to `'cargo'`.
+    #
+    def github_release_type
+      options.fetch(:github_release_type, 'cargo')
+    end
+
+    #
+    # The `git_tag_format` option. Defaults to `'v%s'`.
+    #
+    def git_tag_format
+      options.fetch(:git_tag_format, 'v%s')
+    end
+
+    #
+    # The format (as a regular expression) that git tags containing Rust binary
+    # tarballs are supposed to match. Defaults to `DEFAULT_TAG_REGEX`.
+    #
+    def git_tag_regex
+      @git_tag_regex ||= begin
+        pattern = options[:git_tag_regex]
+        pattern ? Regexp.new(pattern) : DEFAULT_TAG_REGEX
       end
     end
 
@@ -64,37 +141,58 @@ module Thermite
     # `binary_uri_format` option.
     #
     def binary_uri_format
-      @binary_uri_format ||= ENV['THERMITE_BINARY_URI_FORMAT'] ||
-                             @options[:binary_uri_format] ||
-                             false
+      @env['THERMITE_BINARY_URI_FORMAT'] || options[:binary_uri_format] || false
+    end
+
+    #
+    # Whether the host is a Windows platform.
+    #
+    def windows?
+      host_os = @rbconfig['host_os']
+      Gem::WIN_PATTERNS.any? { |pattern| pattern.match?(host_os) }
+    end
+
+    #
+    # Whether the target is macOS.
+    #
+    def darwin?
+      target_os.start_with?('darwin')
+    end
+
+    #
+    # The file extension of the compiled shared Rust library.
+    #
+    def shared_ext
+      if dlext == 'bundle'
+        'dylib'
+      elsif windows?
+        'dll'
+      else
+        dlext
+      end
     end
 
     #
     # The major and minor version of the Ruby interpreter that's currently running.
     #
     def ruby_version
-      @ruby_version ||= begin
-        version_info = rbconfig_ruby_version.split('.')
-        "ruby#{version_info[0]}#{version_info[1]}"
-      end
+      major, minor = @rbconfig['ruby_version'].split('.')
+      "ruby#{major}#{minor}"
     end
-
-    # :nocov:
 
     #
     # Alias for `RbConfig::CONFIG['target_cpu']`.
     #
     def target_arch
-      @target_arch ||= RbConfig::CONFIG['target_cpu']
+      @rbconfig['target_cpu']
     end
 
     #
     # Alias for `RbConfig::CONFIG['target_os']`.
     #
     def target_os
-      @target_os ||= RbConfig::CONFIG['target_os']
+      @rbconfig['target_os']
     end
-    # :nocov:
 
     #
     # The name of the library compiled by Rust.
@@ -102,28 +200,24 @@ module Thermite
     # Due to the way that Cargo works, all hyphens in library names are replaced with underscores.
     #
     def library_name
-      @library_name ||= begin
-        base = toml[:lib] && toml[:lib][:name] ? toml[:lib] : toml[:package]
-        base[:name].tr('-', '_') if base[:name]
-      end
+      lib = toml.fetch(:lib, {})
+      name = lib[:name] || toml.fetch(:package, {})[:name]
+      name&.tr('-', '_')
     end
 
     #
     # The basename of the shared library built by Cargo.
     #
     def cargo_shared_library
-      @cargo_shared_library ||= begin
-        filename = "#{library_name}.#{shared_ext}"
-        filename = "lib#{filename}" unless Gem.win_platform?
-        filename
-      end
+      filename = "#{library_name}.#{shared_ext}"
+      windows? ? filename : "lib#{filename}"
     end
 
     #
     # The basename of the Rust shared library, as installed in the {#ruby_extension_path}.
     #
     def shared_library
-      @shared_library ||= "#{library_name}.so"
+      "#{library_name}.so"
     end
 
     #
@@ -140,7 +234,7 @@ module Thermite
     # The top-level directory of the Ruby project. Defaults to the current working directory.
     #
     def ruby_toplevel_dir
-      @ruby_toplevel_dir ||= @options.fetch(:ruby_project_path, FileUtils.pwd)
+      options.fetch(:ruby_project_path) { Dir.pwd }
     end
 
     #
@@ -151,22 +245,18 @@ module Thermite
       File.join(ruby_toplevel_dir, *path_components)
     end
 
-    # :nocov:
-
     #
     # Absolute path to the shared libruby.
     #
     def libruby_path
-      @libruby_path ||= File.join(RbConfig::CONFIG['libdir'], RbConfig::CONFIG['LIBRUBY_SO'])
+      File.join(@rbconfig['libdir'], @rbconfig['LIBRUBY_SO'])
     end
-
-    # :nocov:
 
     #
     # The top-level directory of the Cargo project. Defaults to the current working directory.
     #
     def rust_toplevel_dir
-      @rust_toplevel_dir ||= @options.fetch(:cargo_project_path, FileUtils.pwd)
+      @task_options.fetch(:cargo_project_path) { Dir.pwd }
     end
 
     #
@@ -182,7 +272,7 @@ module Thermite
     # {#rust_toplevel_dir}/target if that is not set.
     #
     def cargo_target_path(target, *path_components)
-      target_base = ENV.fetch('CARGO_TARGET_DIR', File.join(rust_toplevel_dir, 'target'))
+      target_base = @env.fetch('CARGO_TARGET_DIR') { rust_path('target') }
       File.join(target_base, target, *path_components)
     end
 
@@ -191,7 +281,7 @@ module Thermite
     # Ruby extension.
     #
     def cargo_workspace_member
-      @cargo_workspace_member ||= @options[:cargo_workspace_member]
+      @task_options[:cargo_workspace_member]
     end
 
     #
@@ -199,12 +289,7 @@ module Thermite
     # {#cargo_workspace_member} configuration option.
     #
     def cargo_toml_path
-      @cargo_toml_path ||= begin
-        components = ['Cargo.toml']
-        components.unshift(cargo_workspace_member) if cargo_workspace_member
-
-        rust_path(*components)
-      end
+      rust_path(*[cargo_workspace_member, 'Cargo.toml'].compact)
     end
 
     #
@@ -212,7 +297,7 @@ module Thermite
     # project.
     #
     def ruby_extension_dir
-      @ruby_extension_dir ||= @options.fetch(:ruby_extension_dir, 'lib')
+      options.fetch(:ruby_extension_dir, 'lib')
     end
 
     #
@@ -220,25 +305,6 @@ module Thermite
     #
     def ruby_extension_path
       ruby_path(ruby_extension_dir, shared_library)
-    end
-
-    #
-    # The default git tag regular expression (semantic versioning format).
-    #
-    DEFAULT_TAG_REGEX = /^(#{Thermite::SemVer::VERSION})$/
-
-    #
-    # The format (as a regular expression) that git tags containing Rust binary
-    # tarballs are supposed to match. Defaults to `DEFAULT_TAG_REGEX`.
-    #
-    def git_tag_regex
-      @git_tag_regex ||= begin
-        if @options[:git_tag_regex]
-          Regexp.new(@options[:git_tag_regex])
-        else
-          DEFAULT_TAG_REGEX
-        end
-      end
     end
 
     #
@@ -256,44 +322,46 @@ module Thermite
     end
 
     #
+    # The URL of the crate's repository, as specified in the TOML file.
+    #
+    # @raise [KeyError] if the crate does not specify a repository.
+    #
+    def repository_uri
+      repository = toml.fetch(:package, {})[:repository]
+      raise KeyError, 'No repository found in Cargo.toml' unless repository
+
+      repository
+    end
+
+    #
     # The Thermite-specific config from the TOML file.
     #
     def toml_config
-      @toml_config ||= begin
-        # Not using .dig to be Ruby < 2.3 compatible
-        if toml && toml[:package] && toml[:package][:metadata] &&
-           toml[:package][:metadata][:thermite]
-          toml[:package][:metadata][:thermite]
-        else
-          {}
-        end
-      end
+      toml.dig(:package, :metadata, :thermite) || {}
     end
-
-    # :nocov:
 
     #
     # Linker flags for libruby.
     #
     def dynamic_linker_flags
-      @dynamic_linker_flags ||= RbConfig::CONFIG['DLDFLAGS'].strip
+      @rbconfig['DLDFLAGS'].strip
     end
 
     #
     # Whether to use a statically linked extension.
     #
     def static_extension?
-      ENV.key?('RUBY_STATIC') || RbConfig::CONFIG['ENABLE_SHARED'] == 'no'
+      @env.key?('RUBY_STATIC') || @rbconfig['ENABLE_SHARED'] == 'no'
     end
 
     private
 
     def dlext
-      RbConfig::CONFIG['DLEXT']
+      @rbconfig['DLEXT']
     end
 
-    def rbconfig_ruby_version
-      RbConfig::CONFIG['ruby_version']
+    def overridable_toml_config
+      toml_config.reject { |key, _| CARGO_LOCATION_OPTIONS.include?(key) }
     end
   end
 end

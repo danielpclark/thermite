@@ -17,43 +17,60 @@
 # DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
 # OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-require 'net/http'
+require 'fakes'
+require 'test_helper'
+require 'thermite/downloader'
 
 module Thermite
-  #
-  # Utility methods
-  #
-  module Util
-    #
-    # Logs a debug message to the specified `config.debug_filename`, if set.
-    #
-    def debug(msg)
-      # Should probably replace with a Logger
-      return unless config.debug_filename
-
-      @debug ||= File.open(config.debug_filename, 'w')
-      @debug.write("#{msg}\n")
-      @debug.flush
-    end
+  class DownloaderTest < Minitest::Test
+    URI = 'https://example.com/downloads/library-1.0.0.tar.gz'
 
     #
-    # Wrapper for a Net::HTTP GET request that handles redirects.
+    # Stands in for {Thermite::Package}.
     #
-    # :nocov:
-    def http_get(uri, retries_left = 10)
-      raise RedirectError, 'Too many redirects' if retries_left.zero?
+    class FakePackage
+      attr_reader :installed
 
-      case (response = Net::HTTP.get_response(URI(uri)))
-      when Net::HTTPClientError
-        nil
-      when Net::HTTPServerError
-        raise Net::HTTPClientException.new(response.message, response)
-      when Net::HTTPFound, Net::HTTPPermanentRedirect
-        http_get(response['location'], retries_left - 1)
-      else
-        StringIO.new(response.body)
+      def initialize
+        @installed = []
+      end
+
+      def install(tgz)
+        @installed << tgz.read
       end
     end
-    # :nocov:
+
+    def test_install
+      downloader = build_downloader(URI => 'tarball')
+
+      assert downloader.install(URI, 'Downloading')
+      assert_equal %w[tarball], package.installed
+      assert_equal "Downloading\n", out.string
+      assert_equal ['Unpacking binary: library-1.0.0.tar.gz'], logger.messages
+    end
+
+    def test_install_not_found
+      refute build_downloader.install(URI, 'Downloading')
+      assert_empty package.installed
+    end
+
+    private
+
+    def build_downloader(responses = {})
+      Thermite::Downloader.new(http: FakeHTTP.new(responses), package: package, logger: logger,
+                               out: out)
+    end
+
+    def package
+      @package ||= FakePackage.new
+    end
+
+    def logger
+      @logger ||= FakeLogger.new
+    end
+
+    def out
+      @out ||= StringIO.new
+    end
   end
 end

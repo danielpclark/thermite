@@ -17,50 +17,37 @@
 # DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
 # OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-require 'net/http'
-require 'uri'
-
 module Thermite
   #
-  # Custom binary URI helpers.
+  # Downloads a pre-built Rust shared library from a custom URI.
   #
-  module CustomBinary
+  class CustomBinary
+    #
+    # @param config [Thermite::Config]
+    # @param downloader [#install] downloads and installs a tarball (see {Thermite::Downloader}).
+    #
+    def initialize(config, downloader:)
+      @config = config
+      @downloader = downloader
+    end
+
     #
     # Downloads a Rust binary using a custom URI format, given the target OS and architecture.
     #
     # Requires the `binary_uri_format` option to be set. The version of the binary is determined by
     # the crate version given in `Cargo.toml`.
     #
-    # Returns whether a binary was found and unpacked.
+    # @return [Boolean] whether a binary was found and installed.
     #
-    def download_binary_from_custom_uri
-      return false unless config.binary_uri_format
+    def download
+      return false unless @config.binary_uri_format
 
-      version = config.crate_version
-      uri ||= format(
-        config.binary_uri_format,
-        filename: config.tarball_filename(version),
-        version: version
-      )
+      version = @config.crate_version
+      uri = format(@config.binary_uri_format,
+                   filename: @config.tarball_filename(version),
+                   version: version)
 
-      return false unless (tgz = download_versioned_binary(uri, version))
-
-      debug "Unpacking binary from Cargo version: #{File.basename(uri)}"
-      unpack_tarball(tgz)
-      prepare_downloaded_library
-      true
-    end
-
-    private
-
-    def download_versioned_binary(uri, version)
-      unless ENV.key?('THERMITE_TEST')
-        # :nocov:
-        puts "Downloading compiled version (#{version})"
-        # :nocov:
-      end
-
-      http_get(uri)
+      @downloader.install(uri, "Downloading compiled version (#{version})")
     end
   end
 end

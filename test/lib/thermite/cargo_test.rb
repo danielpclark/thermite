@@ -22,74 +22,111 @@ require 'thermite/cargo'
 
 module Thermite
   class CargoTest < Minitest::Test
-    include Thermite::ModuleTester
+    include Thermite::ConfigHelper
 
-    class Tester
-      include Thermite::Cargo
-      include Thermite::TestHelper
-    end
+    #
+    # Records the commands it is asked to run, and the directory they are run in.
+    #
+    class FakeShell
+      attr_reader :commands
 
-    def test_run_cargo_if_exists
-      mock_module.stubs(:find_executable).returns('/opt/cargo-test/bin/cargo')
-      mock_module.expects(:sh).with('/opt/cargo-test/bin/cargo', 'foo', 'bar').once
-      mock_module.run_cargo_if_exists('foo', 'bar')
-    end
-
-    def test_run_cargo_if_exists_sans_cargo
-      mock_module.stubs(:find_executable).returns(nil)
-      mock_module.expects(:sh).never
-      mock_module.run_cargo_if_exists('foo', 'bar')
-    end
-
-    def test_run_cargo_debug_rustc
-      mock_module.config.stubs(:dynamic_linker_flags).returns('')
-      mock_module.expects(:run_cargo).with('rustc').once
-      mock_module.run_cargo_rustc('debug')
-    end
-
-    def test_run_cargo_release_rustc
-      mock_module.config.stubs(:dynamic_linker_flags).returns('')
-      mock_module.expects(:run_cargo).with('rustc', '--release').once
-      mock_module.run_cargo_rustc('release')
-    end
-
-    def test_run_cargo_rustc_with_workspace_member
-      mock_module.config.stubs(:dynamic_linker_flags).returns('')
-      mock_module.config.stubs(:cargo_workspace_member).returns('foo/bar')
-      mock_module.expects(:run_cargo).with('rustc', '--manifest-path', 'foo/bar/Cargo.toml').once
-      mock_module.run_cargo_rustc('debug')
-    end
-
-    def test_run_cargo_rustc_with_dynamic_linker_flags
-      mock_module.config.stubs(:dynamic_linker_flags).returns('foo bar')
-      if RbConfig::CONFIG['target_os'] == 'mingw32'
-        mock_module.expects(:run_cargo).with('rustc').once
-      else
-        mock_module.expects(:run_cargo).with('rustc', '--lib', '--', '-C', 'link-args=foo bar').once
-      end
-      mock_module.run_cargo_rustc('debug')
-    end
-
-    def test_inform_user_about_cargo_exception
-      _, err = capture_io do
-        assert_raises RuntimeError do
-          mock_module(optional_rust_extension: false).inform_user_about_cargo
-        end
+      def initialize
+        @commands = []
       end
 
-      assert_equal '', err
-    end
-
-    def test_inform_user_about_cargo_warning
-      _, err = capture_io do
-        mock_module(optional_rust_extension: true).inform_user_about_cargo
+      def sh(*command)
+        @commands << [Dir.pwd, command]
       end
-
-      assert_equal mock_module.cargo_recommended_msg, err
     end
 
-    def described_class
-      Tester
+    def test_available
+      assert cargo.available?
+      refute cargo(executable: nil).available?
+    end
+
+    def test_run_in_rust_toplevel_dir_with_ruby_executable
+      cargo.run('foo', 'bar')
+
+      dir, command = shell.commands.first
+      assert_equal File.realpath(default_config.rust_toplevel_dir), File.realpath(dir)
+      assert_equal [{ 'RUBY' => '/opt/ruby/bin/ruby' }, '/opt/cargo-test/bin/cargo', 'foo', 'bar'],
+                   command
+    end
+
+    def test_test
+      cargo.test
+      assert_equal [%w[test]], cargo_args
+    end
+
+    def test_test_sans_cargo
+      cargo(executable: nil).test
+      assert_empty shell.commands
+    end
+
+    def test_clean_with_workspace_member
+      cargo(config: build_config(options: { cargo_workspace_member: 'foo/bar' })).clean
+      assert_equal [%w[clean --manifest-path foo/bar/Cargo.toml]], cargo_args
+    end
+
+    def test_clean_sans_cargo
+      cargo(executable: nil).clean
+      assert_empty shell.commands
+    end
+
+    def test_build_debug
+      cargo.build('debug')
+      assert_equal [%w[rustc]], cargo_args
+    end
+
+    def test_build_release
+      cargo.build('release')
+      assert_equal [%w[rustc --release]], cargo_args
+    end
+
+    def test_build_with_workspace_member
+      cargo(config: build_config(options: { cargo_workspace_member: 'foo/bar' })).build('debug')
+      assert_equal [%w[rustc --manifest-path foo/bar/Cargo.toml]], cargo_args
+    end
+
+    def test_build_with_dynamic_linker_flags
+      cargo(config: build_config(rbconfig: { 'DLDFLAGS' => 'foo bar' })).build('debug')
+      assert_equal [['rustc', '--lib', '--', '-C', 'link-args=foo bar']], cargo_args
+    end
+
+    def test_build_with_dynamic_linker_flags_on_mingw
+      config = build_config(rbconfig: { 'DLDFLAGS' => 'foo bar', 'target_os' => 'mingw32' })
+      cargo(config: config).build('debug')
+      assert_equal [%w[rustc]], cargo_args
+    end
+
+    def test_finds_cargo_executable_from_config
+      Dir.mktmpdir do |dir|
+        # On Windows, only files with an executable extension (e.g. `.exe`) are executable.
+        executable = File.join(dir, "my-cargo#{RbConfig::CONFIG['EXEEXT']}")
+        File.write(executable, '')
+        File.chmod(0o755, executable)
+
+        config = build_config(env: { 'CARGO' => executable })
+        assert_equal executable, Thermite::Cargo.new(config).executable
+      end
+    end
+
+    private
+
+    def default_config
+      @default_config ||= build_config
+    end
+
+    def shell
+      @shell ||= FakeShell.new
+    end
+
+    def cargo(config: default_config, executable: '/opt/cargo-test/bin/cargo')
+      Thermite::Cargo.new(config, executable: executable, shell: shell)
+    end
+
+    def cargo_args
+      shell.commands.map { |_, command| command.drop(2) }
     end
   end
 end

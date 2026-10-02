@@ -17,97 +17,113 @@
 # DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
 # OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-require 'fileutils'
-require 'tmpdir'
 require 'test_helper'
 require 'thermite/package'
-require 'thermite/util'
 
 module Thermite
   class PackageTest < Minitest::Test
-    include Thermite::ModuleTester
+    include Thermite::ConfigHelper
 
-    class Tester
-      include Thermite::Package
-      include Thermite::TestHelper
-      include Thermite::Util
+    #
+    # Records which {Thermite::InstallNameTool} steps were run. Like the real tool, it changes the
+    # library it prepares for packaging.
+    #
+    class FakeInstallNameTool
+      attr_reader :steps
+
+      def initialize
+        @steps = []
+      end
+
+      def before_packaging(library_path)
+        @steps << :before_packaging
+        File.write(library_path, "#{File.read(library_path)} (packaged)")
+      end
+
+      def after_unpacking
+        @steps << :after_unpacking
+      end
     end
 
-    def test_build_package_and_unpack_tarball
-      using_temp_dir do |dir, tgz_filename|
-        using_project_dir(stub_dir(dir, 'project')) do |project_dir|
-          extension_path = stub_extension_path(project_dir)
-          stub_config(project_dir, extension_path, tgz_filename)
+    def test_build
+      config = build_config(options: { ruby_project_path: stub_project_dir })
 
-          mock_module.build_package
-          FileUtils.rm_f(extension_path)
+      assert_equal config.tarball_filename('4.5.6'), File.basename(build_tarball(config))
+    end
 
-          # This simulates having an extension build via `install/Rakefile` instead of the
-          # top-level Rakefile.
-          using_install_dir(stub_dir(dir, 'install')) do
-            assert_file_created(extension_path) do
-              File.open(tgz_filename, 'rb') do |f|
-                mock_module.unpack_tarball(f)
-              end
-            end
-            assert_equal 'some extension', File.read(extension_path)
-          end
-        end
+    def test_build_leaves_installed_library_unchanged
+      config = build_config(options: { ruby_project_path: stub_project_dir })
+      tarball_path = build_tarball(config)
+
+      assert_equal 'some extension', File.read(config.ruby_extension_path)
+      FileUtils.rm_f(config.ruby_extension_path)
+      File.open(tarball_path, 'rb') { |f| package(config).unpack(f) }
+      assert_equal 'some extension (packaged)', File.read(config.ruby_extension_path)
+    end
+
+    def test_build_and_install
+      config = build_config(options: { ruby_project_path: stub_project_dir })
+      tarball_path = build_tarball(config)
+      FileUtils.rm_f(config.ruby_extension_path)
+
+      assert_file_created(config.ruby_extension_path) do
+        install_from_another_directory(config, tarball_path)
       end
+
+      assert_equal 'some extension (packaged)', File.read(config.ruby_extension_path)
+      assert_equal %i[before_packaging after_unpacking], install_name_tool.steps
+      assert_equal ['Unpacking file: lib/test_crate.so'], logger.messages
+    end
+
+    def test_unpack_does_not_adjust_install_name
+      config = build_config(options: { ruby_project_path: stub_project_dir })
+      tarball_path = build_tarball(config)
+
+      File.open(tarball_path, 'rb') { |f| package(config).unpack(f) }
+
+      assert_equal %i[before_packaging], install_name_tool.steps
     end
 
     private
 
-    def described_class
-      Tester
+    def package(config)
+      Thermite::Package.new(config, logger: logger, install_name_tool: install_name_tool)
     end
 
-    def stub_config(project_dir, extension_path, filename)
-      mock_module.config.stubs(:ruby_toplevel_dir).returns(project_dir)
-      mock_module.config.stubs(:ruby_extension_path).returns(extension_path)
-      mock_module.config.stubs(:toml).returns(package: { version: '7.8.9' })
-      mock_module.config.stubs(:tarball_filename).with('7.8.9').returns(filename)
+    def install_name_tool
+      @install_name_tool ||= FakeInstallNameTool.new
     end
 
-    def stub_dir(base, name)
-      subdir = File.join(base, name)
-      Dir.mkdir(subdir)
-
-      subdir
+    def logger
+      @logger ||= FakeLogger.new
     end
 
-    def stub_extension_path(dir)
-      extension_path = File.join(dir, 'lib', 'test.txt')
-      Dir.mkdir(File.dirname(extension_path))
-      File.write(extension_path, 'some extension')
-
-      extension_path
-    end
-
-    def using_project_dir(project_dir)
-      yield project_dir
-    ensure
-      FileUtils.rm_rf(project_dir)
-    end
-
-    def using_install_dir(install_dir)
-      Dir.mkdir(File.join(install_dir, 'lib'))
-      Dir.chdir(install_dir) do
-        yield install_dir
+    #
+    # Builds a tarball of a fake extension in the Ruby project directory, returning its path.
+    #
+    def build_tarball(config)
+      File.write(config.ruby_extension_path, 'some extension')
+      Dir.chdir(config.ruby_toplevel_dir) do
+        File.expand_path(package(config).build)
       end
-    ensure
-      FileUtils.rm_rf(install_dir)
     end
 
-    def using_temp_dir
-      Dir.mktmpdir do |dir|
-        filename = File.join(dir, 'test-7.8.9.tar.gz')
-        begin
-          yield dir, filename
-        ensure
-          FileUtils.rm_f(filename)
-        end
+    #
+    # This simulates having an extension build via `install/Rakefile` instead of the top-level
+    # Rakefile.
+    #
+    def install_from_another_directory(config, tarball_path)
+      Dir.chdir(File.join(config.ruby_toplevel_dir, 'lib')) do
+        File.open(tarball_path, 'rb') { |f| package(config).install(f) }
       end
+    end
+
+    def stub_project_dir
+      dir = Dir.mktmpdir('thermite_project')
+      temp_dirs << dir
+      Dir.mkdir(File.join(dir, 'lib'))
+
+      dir
     end
 
     def assert_file_created(filename)

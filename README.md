@@ -1,7 +1,6 @@
 # Thermite
 
-[![Linux/OSX build status](https://travis-ci.org/malept/thermite.svg?branch=master)](https://travis-ci.org/malept/thermite)
-[![Windows build status](https://ci.appveyor.com/api/projects/status/kneo890m3ypoxril?svg=true)](https://ci.appveyor.com/project/malept/thermite)
+[![CI](https://github.com/danielpclark/thermite/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/danielpclark/thermite/actions/workflows/ci.yml)
 [![Code Climate](https://codeclimate.com/github/malept/thermite/badges/gpa.svg)](https://codeclimate.com/github/malept/thermite)
 [![Test coverage](https://codeclimate.com/github/malept/thermite/badges/coverage.svg)](https://codeclimate.com/github/malept/thermite/coverage)
 [![Inline docs](http://inch-ci.org/github/malept/thermite.svg?branch=master)](http://inch-ci.org/github/malept/thermite)
@@ -13,6 +12,8 @@ Thermite is a Rake-based helper for building and distributing Rust-based Ruby ex
 
 * Provides wrappers for `cargo` commands.
 * Handles non-standard `cargo` installations via the `CARGO` environment variable.
+* Builds against the Ruby that runs Rake, by passing it to Cargo as the `RUBY` environment variable
+  (which [Rutie](https://github.com/danielpclark/rutie) and `rb-sys` read to find libruby).
 * Opt-in to allow users to install pre-compiled Rust extensions hosted on GitHub releases.
 * Opt-in to allow users to install pre-compiled Rust extensions hosted on a third party server.
 * Provides a wrapper for initializing a Rust extension via Fiddle.
@@ -105,12 +106,44 @@ Possible options:
 * `ruby_extension_dir` - the directory relative to `ruby_project_path` where the extension is
   located. Defaults to `lib`.
 
-### Example
+### Example: Rutie
 
-Using the cliché Rust+Ruby example, the [`rusty_blank`](https://github.com/malept/rusty_blank)
-repository contains an example of using Thermite with [ruru](https://github.com/d-unseductable/ruru)
-to provide a `String.blank?` speedup extension. While the example uses ruru, this gem should be
-usable with any method of integrating Rust and Ruby that you choose.
+[Rutie](https://github.com/danielpclark/rutie) 0.10 supports Ruby 2.5 to 2.7 (built with
+`--enable-shared`). Declare the crate as a `cdylib` in `Cargo.toml`:
+
+```toml
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+rutie = "0.10.2"
+```
+
+Write an `Init_<library name>` function in `src/lib.rs`, as described in Rutie's README, then build
+it with `rake thermite:build` and load it from Ruby:
+
+```ruby
+require 'thermite/fiddle'
+
+toplevel_dir = File.dirname(__dir__)
+Thermite::Fiddle.load_module('Init_my_extension',
+                             cargo_project_path: toplevel_dir,
+                             ruby_project_path: toplevel_dir)
+```
+
+`Thermite::Fiddle` uses Ruby's `fiddle` library, which is not a default gem since Ruby 4.0. On
+Ruby 4.0 or later, add `fiddle` to your gemspec or Gemfile to use it.
+
+Rutie's build script links to whichever Ruby the `RUBY` environment variable names (or the first
+`ruby` in the `PATH`). Thermite sets `RUBY` to the interpreter running Rake, unless it is already
+set, so the extension always links to the same libruby that later loads it.
+
+`test/fixtures/rutie_extension` contains a complete Rutie 0.10.2 extension. The integration test
+that builds, tests, packages and loads it can be run with
+`THERMITE_RUTIE_INTEGRATION=1 rake test` (it requires Cargo and a Ruby supported by Rutie).
+
+While the example uses Rutie, this gem should be usable with any method of integrating Rust and
+Ruby that you choose.
 
 ### Debug / release build
 
@@ -123,6 +156,20 @@ For example, you can run `CARGO_PROFILE=debug rake thermite:build`.
 
 Debug statements can be written to a file specified by the `THERMITE_DEBUG_FILENAME` environment
 variable.
+
+## Code layout
+
+Each part of Thermite is a small class that is handed everything it uses when it is created, so
+that reading one file is enough to know where every method it calls comes from:
+
+* `Thermite::Config` reads every outside value: task options, `Cargo.toml`, environment variables
+  and `RbConfig`.
+* `Thermite::Cargo` runs `cargo`.
+* `Thermite::Builder` builds the library with Cargo, or downloads a pre-built one via
+  `Thermite::CustomBinary` or `Thermite::GithubReleaseBinary` (which use `Thermite::Downloader`
+  and `Thermite::HTTPClient`).
+* `Thermite::Package` creates and installs tarballs, using `Thermite::InstallNameTool` on macOS.
+* `Thermite::Tasks` creates those objects and defines the Rake tasks that call them.
 
 ## FAQ
 

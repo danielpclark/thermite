@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 #
-# Copyright (c) 2018 Mark Lee and contributors
+# Copyright (c) 2016 Mark Lee and contributors
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
 # associated documentation files (the "Software"), to deal in the Software without restriction,
@@ -19,32 +19,34 @@
 
 module Thermite
   #
-  # [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (2.0.0) regular expression.
+  # Downloads a packaged Rust shared library and installs it into the Ruby project.
   #
-  module SemVer
+  class Downloader
     #
-    # Valid version number part (major/minor/patch).
+    # @param http [#get] fetches a URI, returning an IO or `nil` (see {Thermite::HTTPClient}).
+    # @param package [#install] installs a downloaded tarball (see {Thermite::Package}).
+    # @param logger [#debug] receives debug messages (see {Thermite::DebugLog}).
+    # @param out [#puts] receives progress messages. Defaults to `$stdout`.
     #
-    NUMERIC = '(?:0|[1-9]\d*)'
+    def initialize(http:, package:, logger:, out: $stdout)
+      @http = http
+      @package = package
+      @logger = logger
+      @out = out
+    end
 
     #
-    # Valid identifier for pre-release versions or build metadata.
+    # Downloads the tarball at `uri` and installs it, printing `announcement` first.
     #
-    IDENTIFIER = '[-0-9A-Za-z][-0-9A-Za-z.]*'
+    # @return [Boolean] whether a tarball was found and installed.
+    #
+    def install(uri, announcement)
+      @out.puts announcement
+      return false unless (tgz = @http.get(uri))
 
-    #
-    # Version pre-release section, including the hyphen.
-    #
-    PRERELEASE = "-#{IDENTIFIER}"
-
-    #
-    # Version build metadata section, including the plus sign.
-    #
-    BUILD_METADATA = "\\+#{IDENTIFIER}"
-
-    #
-    # Semantic version-compliant regular expression.
-    #
-    VERSION = "v?#{NUMERIC}\.#{NUMERIC}\.#{NUMERIC}(?:#{PRERELEASE})?(?:#{BUILD_METADATA})?"
+      @logger.debug "Unpacking binary: #{File.basename(uri)}"
+      @package.install(tgz)
+      true
+    end
   end
 end

@@ -17,15 +17,24 @@
 # DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
 # OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-require 'net/http'
 require 'rexml/document'
-require 'uri'
 
 module Thermite
   #
-  # GitHub releases binary helpers.
+  # Downloads a pre-built Rust shared library from GitHub releases.
   #
-  module GithubReleaseBinary
+  class GithubReleaseBinary
+    #
+    # @param config [Thermite::Config]
+    # @param downloader [#install] downloads and installs a tarball (see {Thermite::Downloader}).
+    # @param http [#get] fetches the releases feed (see {Thermite::HTTPClient}).
+    #
+    def initialize(config, downloader:, http:)
+      @config = config
+      @downloader = downloader
+      @http = http
+    end
+
     #
     # Downloads a Rust binary from GitHub releases, given the target OS and architecture.
     #
@@ -37,89 +46,47 @@ module Thermite
     # the latest version in GitHub releases. Otherwise, it will download the appropriate binary for
     # the crate version given in `Cargo.toml`.
     #
-    # Returns whether a binary was found and unpacked.
+    # @return [Boolean] whether a binary was found and installed.
     #
-    def download_binary_from_github_release
-      return false unless options[:github_releases]
+    def download
+      return false unless @config.github_releases?
 
-      case options[:github_release_type]
-      when 'latest'
-        download_latest_binary_from_github_release
-      else # 'cargo'
-        download_cargo_version_from_github_release
+      if @config.github_release_type == 'latest'
+        download_latest_release
+      else
+        download_cargo_version
       end
     end
 
     private
 
-    def download_cargo_version_from_github_release
-      version = config.crate_version
-      # TODO: Change this to a named token and increment the 0.minor version
-      # rubocop:disable Style/FormatStringToken
-      tag = options.fetch(:git_tag_format, 'v%s') % version
-      # rubocop:enable Style/FormatStringToken
-      uri = github_download_uri(tag, version)
-      return false unless (tgz = download_versioned_github_release_binary(uri, version))
+    def download_cargo_version
+      version = @config.crate_version
+      tag = format(@config.git_tag_format, version)
+      install(tag, version)
+    end
 
-      debug "Unpacking GitHub release from Cargo version: #{File.basename(uri)}"
-      unpack_tarball(tgz)
-      prepare_downloaded_library
-      true
+    def download_latest_release
+      releases.any? { |tag, version| install(tag, version) }
+    end
+
+    def install(tag, version)
+      filename = @config.tarball_filename(version)
+      uri = "#{@config.repository_uri}/releases/download/#{tag}/#{filename}"
+      @downloader.install(uri, "Downloading compiled version (#{version}) from GitHub")
     end
 
     #
-    # Downloads and unpacks the latest binary from GitHub releases, given the target OS
-    # and architecture.
+    # The `[tag, version]` pairs of the releases whose tags match the `git_tag_regex` option,
+    # newest first.
     #
-    def download_latest_binary_from_github_release
-      installed_binary = false
-      each_github_release(github_uri) do |version, download_uri|
-        tgz = download_versioned_github_release_binary(download_uri, version)
-        next unless tgz
-        debug "Unpacking GitHub release: #{File.basename(download_uri)}"
-        unpack_tarball(tgz)
-        prepare_downloaded_library
-        installed_binary = true
-        break
+    def releases
+      feed = REXML::Document.new(@http.get("#{@config.repository_uri}/releases.atom"))
+      tags = REXML::XPath.match(feed, '//entry/title/text()').map(&:to_s)
+      tags.each_with_object([]) do |tag, list|
+        match = @config.git_tag_regex.match(tag)
+        list << [tag, match[1]] if match
       end
-
-      installed_binary
-    end
-
-    def github_uri
-      @github_uri ||= begin
-        unless (repository = config.toml[:package][:repository])
-          raise KeyError, 'No repository found in Config.toml'
-        end
-
-        repository
-      end
-    end
-
-    def github_download_uri(tag, version)
-      "#{github_uri}/releases/download/#{tag}/#{config.tarball_filename(version)}"
-    end
-
-    def each_github_release(github_uri)
-      releases_uri = "#{github_uri}/releases.atom"
-      feed = REXML::Document.new(http_get(releases_uri))
-      REXML::XPath.each(feed, '//entry/title/text()') do |tag|
-        match = config.git_tag_regex.match(tag.to_s)
-        next unless match
-        version = match[1]
-
-        yield(version, github_download_uri(tag, version))
-      end
-    end
-
-    def download_versioned_github_release_binary(uri, version)
-      unless ENV.key?('THERMITE_TEST')
-        # :nocov:
-        puts "Downloading compiled version (#{version}) from GitHub"
-        # :nocov:
-      end
-
-      http_get(uri)
     end
   end
 end
