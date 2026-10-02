@@ -131,6 +131,9 @@ Thermite::Fiddle.load_module('Init_my_extension',
                              ruby_project_path: toplevel_dir)
 ```
 
+`Thermite::Fiddle` uses Ruby's `fiddle` library, which is not a default gem since Ruby 4.0. On
+Ruby 4.0 or later, add `fiddle` to your gemspec or Gemfile to use it.
+
 Rutie's build script links to whichever Ruby the `RUBY` environment variable names (or the first
 `ruby` in the `PATH`). Thermite sets `RUBY` to the interpreter running Rake, unless it is already
 set, so the extension always links to the same libruby that later loads it.

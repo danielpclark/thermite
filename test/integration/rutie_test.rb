@@ -18,7 +18,6 @@
 # OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 require 'test_helper'
-require 'thermite/fiddle'
 require 'thermite/package'
 require 'thermite/debug_log'
 require 'thermite/tasks'
@@ -42,6 +41,9 @@ module Thermite
       unless RUTIE_RUBY_VERSIONS.satisfied_by?(Gem::Version.new(RUBY_VERSION))
         skip "Rutie 0.10 does not support Ruby #{RUBY_VERSION}"
       end
+      # Required only once the test runs: Fiddle is not a default gem since Ruby 4.0, which this
+      # test skips.
+      require 'thermite/fiddle'
 
       @original_application = Rake.application
       Rake.application = Rake::Application.new

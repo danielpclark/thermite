@@ -24,6 +24,8 @@
   `Thermite::Fiddle.load_module` now respects settings such as `ruby_extension_dir` made there
 * `Thermite::Tasks.new` no longer modifies the options hash passed to it
 * `cargo` is found without `mkmf`, so no `checking for cargo...` output or `mkmf.log` is produced
+* `Thermite::Fiddle` needs the `fiddle` gem to be declared on Ruby 4.0 or later, where it is no
+  longer a default gem
 
 ### Fixed
 
