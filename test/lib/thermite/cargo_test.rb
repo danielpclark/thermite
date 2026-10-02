@@ -48,7 +48,7 @@ module Thermite
       cargo.run('foo', 'bar')
 
       dir, command = shell.commands.first
-      assert_equal File.realpath(config.rust_toplevel_dir), File.realpath(dir)
+      assert_equal File.realpath(default_config.rust_toplevel_dir), File.realpath(dir)
       assert_equal [{ 'RUBY' => '/opt/ruby/bin/ruby' }, '/opt/cargo-test/bin/cargo', 'foo', 'bar'],
                    command
     end
@@ -113,15 +113,15 @@ module Thermite
 
     private
 
-    def config
-      @config ||= build_config
+    def default_config
+      @default_config ||= build_config
     end
 
     def shell
       @shell ||= FakeShell.new
     end
 
-    def cargo(config: self.config, executable: '/opt/cargo-test/bin/cargo')
+    def cargo(config: default_config, executable: '/opt/cargo-test/bin/cargo')
       Thermite::Cargo.new(config, executable: executable, shell: shell)
     end
 

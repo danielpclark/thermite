@@ -48,7 +48,7 @@ module Thermite
     end
 
     def teardown
-      Rake.application = @original_application if @original_application
+      Rake.application = @original_application if defined?(@original_application)
       super
     end
 

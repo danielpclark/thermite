@@ -77,3 +77,25 @@ jobs:
           cargo -V
           rustc -V
       - run: bundle exec rake test
+      # Temporary: diagnoses how the Rutie fixture links libruby on macOS.
+      - name: Show Rutie fixture linkage
+        if: failure() && runner.os == 'macOS'
+        run: |
+          ruby -e 'p RbConfig::CONFIG.values_at("ENABLE_SHARED", "LIBRUBY_SO", "LIBRUBYARG_SHARED", "DLDFLAGS", "libdir")'
+          otool -L "$(ruby -e 'print RbConfig.ruby')"
+          cp -R test/fixtures/rutie_extension "$RUNNER_TEMP/rutie_extension"
+          cd "$RUNNER_TEMP/rutie_extension"
+          export RUBY="$(ruby -e 'print RbConfig.ruby')"
+          for flags in none dldflags; do
+            echo "::group::cargo rustc ($flags)"
+            if [ "$flags" = none ]; then
+              cargo rustc --release --lib --target-dir "target-$flags" -vv 2>&1 | grep -E 'rustc-link|warning' || true
+            else
+              cargo rustc --release --lib --target-dir "target-$flags" -vv -- -C "link-args=$(ruby -e 'print RbConfig::CONFIG["DLDFLAGS"]')" 2>&1 | grep -E 'rustc-link|warning' || true
+            fi
+            lib="target-$flags/release/librutie_thermite_example.dylib"
+            otool -L "$lib"
+            nm -u "$lib" | grep -E '_rb_cObject|_rb_define_class' || true
+            dyld_info -fixups "$lib" 2>/dev/null | grep -E 'rb_cObject' || true
+            echo "::endgroup::"
+          done

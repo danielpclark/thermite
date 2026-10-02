@@ -30,6 +30,7 @@ module Thermite
     #
     def initialize(filename)
       @filename = filename
+      @written = false
     end
 
     #
