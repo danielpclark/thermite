@@ -30,7 +30,8 @@ When filing a bug, please include the following information:
 Here are some things to keep in mind as you file a pull request to fix a bug, add a new feature,
 etc.:
 
-* Travis CI is used to make sure that the project conforms to the coding standards.
+* GitHub Actions is used to make sure that the project conforms to the coding standards, and that
+  the tests pass on Linux, macOS and Windows.
 * If your PR changes the behavior of an existing feature, or adds a new feature, please add/edit
   the RDoc inline documentation (using the Markdown format). You can see what it looks like in the
   rendered documentation by running `bundle exec rake rdoc`.

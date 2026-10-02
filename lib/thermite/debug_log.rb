@@ -21,7 +21,7 @@ module Thermite
   #
   # Writes debug messages to a file, if a filename is given. Otherwise, messages are discarded.
   #
-  # The file is only created once the first message is written.
+  # The file is truncated when the first message is written, and is not kept open between messages.
   #
   class DebugLog
     #
@@ -38,9 +38,8 @@ module Thermite
     def debug(msg)
       return unless @filename
 
-      @file ||= File.open(@filename, 'w')
-      @file.write("#{msg}\n")
-      @file.flush
+      File.open(@filename, @written ? 'a' : 'w') { |file| file.write("#{msg}\n") }
+      @written = true
     end
   end
 end

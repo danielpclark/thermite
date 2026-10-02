@@ -17,6 +17,7 @@
 # DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
 # OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+require 'pathname'
 require 'rbconfig'
 
 module Thermite
@@ -34,7 +35,7 @@ module Thermite
     # @return [String, nil] the path to the executable, or `nil` if it cannot be found.
     #
     def self.find(name, path: ENV['PATH'])
-      if File.expand_path(name) == name
+      if Pathname.new(name).absolute?
         executable_candidate(name)
       else
         search_dirs(path).each do |dir|

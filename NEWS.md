@@ -7,6 +7,8 @@
 * `cargo` is run with the `RUBY` environment variable set to the Ruby running Thermite (unless it
   is already set), so that Rutie and `rb-sys` build scripts link to the right libruby
 * An opt-in integration test that builds, tests, packages and loads a Rutie 0.10.2 extension
+* GitHub Actions CI on Linux, macOS and Windows (replacing Travis CI and AppVeyor), including the
+  Rutie integration test on Ruby 2.5 to 2.7
 
 ### Changed
 
@@ -25,6 +27,7 @@
 
 ### Fixed
 
+* `rexml` is declared as a dependency, since it is not a default gem since Ruby 3.0
 * Too many HTTP redirects raised a `NameError` instead of a redirect error
 * All HTTP redirect types (including relative `Location` headers) are followed
 * `install_name_tool` is run without a shell (`shellwords` was used without being required)

@@ -101,7 +101,8 @@ module Thermite
 
     def test_finds_cargo_executable_from_config
       Dir.mktmpdir do |dir|
-        executable = File.join(dir, 'my-cargo')
+        # On Windows, only files with an executable extension (e.g. `.exe`) are executable.
+        executable = File.join(dir, "my-cargo#{RbConfig::CONFIG['EXEEXT']}")
         File.write(executable, '')
         File.chmod(0o755, executable)
 

@@ -31,13 +31,13 @@ module Thermite
     end
 
     def test_find_in_path
-      executable = create_file('tool', 0o755)
+      executable = create_file(executable_name('tool'), 0o755)
 
       assert_equal executable, Thermite::Executable.find('tool', path: search_path)
     end
 
     def test_find_absolute_path
-      executable = create_file('tool', 0o755)
+      executable = create_file(executable_name('tool'), 0o755)
 
       assert_equal executable, Thermite::Executable.find(executable, path: '')
     end
@@ -54,6 +54,13 @@ module Thermite
     end
 
     private
+
+    #
+    # On Windows, only files with an executable extension (e.g. `.exe`) are executable.
+    #
+    def executable_name(name)
+      "#{name}#{RbConfig::CONFIG['EXEEXT']}"
+    end
 
     def search_path
       [File.join(@dir, 'missing'), @dir].join(File::PATH_SEPARATOR)
