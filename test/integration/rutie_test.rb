@@ -61,6 +61,7 @@ module Thermite
         %w[thermite:build thermite:test thermite:tarball].each { |name| Rake::Task[name].invoke }
       end
 
+      # Packaging must leave the built library usable.
       assert_loads_extension(options)
       assert_tarball_installs(tasks.config, project_dir)
     end
@@ -82,17 +83,21 @@ module Thermite
       assert_equal 'selppa', Object.const_get(:RutieThermiteExample).reverse('apples')
     end
 
+    #
+    # Installs the tarball into another project, as a gem install without Cargo would, and loads
+    # the installed library.
+    #
     def assert_tarball_installs(config, project_dir)
       install_dir = copy_fixture
-      install_config = Thermite::Config.new({ cargo_project_path: install_dir,
-                                              ruby_project_path: install_dir })
+      install_options = { cargo_project_path: install_dir, ruby_project_path: install_dir }
+      install_config = Thermite::Config.new(install_options)
       tarball = File.join(project_dir, config.tarball_filename(config.crate_version))
       package = Thermite::Package.new(install_config, logger: Thermite::DebugLog.new(nil))
 
       File.open(tarball, 'rb') { |tgz| package.install(tgz) }
 
-      assert_equal File.binread(config.ruby_extension_path),
-                   File.binread(install_config.ruby_extension_path)
+      assert File.exist?(install_config.ruby_extension_path)
+      assert_loads_extension(install_options)
     end
   end
 end

@@ -28,6 +28,8 @@
 ### Fixed
 
 * `rexml` is declared as a dependency, since it is not a default gem since Ruby 3.0
+* On macOS, `thermite:tarball` no longer leaves the built library unloadable: the libruby path
+  is now rewritten in a copy of the library that is packaged, not in the installed library
 * Too many HTTP redirects raised a `NameError` instead of a redirect error
 * All HTTP redirect types (including relative `Location` headers) are followed
 * `install_name_tool` is run without a shell (`shellwords` was used without being required)

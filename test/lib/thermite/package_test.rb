@@ -25,7 +25,8 @@ module Thermite
     include Thermite::ConfigHelper
 
     #
-    # Records which {Thermite::InstallNameTool} steps were run.
+    # Records which {Thermite::InstallNameTool} steps were run. Like the real tool, it changes the
+    # library it prepares for packaging.
     #
     class FakeInstallNameTool
       attr_reader :steps
@@ -34,8 +35,9 @@ module Thermite
         @steps = []
       end
 
-      def before_packaging
+      def before_packaging(library_path)
         @steps << :before_packaging
+        File.write(library_path, "#{File.read(library_path)} (packaged)")
       end
 
       def after_unpacking
@@ -49,6 +51,16 @@ module Thermite
       assert_equal config.tarball_filename('4.5.6'), File.basename(build_tarball(config))
     end
 
+    def test_build_leaves_installed_library_unchanged
+      config = build_config(options: { ruby_project_path: stub_project_dir })
+      tarball_path = build_tarball(config)
+
+      assert_equal 'some extension', File.read(config.ruby_extension_path)
+      FileUtils.rm_f(config.ruby_extension_path)
+      File.open(tarball_path, 'rb') { |f| package(config).unpack(f) }
+      assert_equal 'some extension (packaged)', File.read(config.ruby_extension_path)
+    end
+
     def test_build_and_install
       config = build_config(options: { ruby_project_path: stub_project_dir })
       tarball_path = build_tarball(config)
@@ -58,7 +70,7 @@ module Thermite
         install_from_another_directory(config, tarball_path)
       end
 
-      assert_equal 'some extension', File.read(config.ruby_extension_path)
+      assert_equal 'some extension (packaged)', File.read(config.ruby_extension_path)
       assert_equal %i[before_packaging after_unpacking], install_name_tool.steps
       assert_equal ['Unpacking file: lib/test_crate.so'], logger.messages
     end

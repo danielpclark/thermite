@@ -38,32 +38,31 @@ module Thermite
     end
 
     #
-    # Replaces the local libruby path with a placeholder, before the library is packaged.
+    # Replaces the local libruby path with a placeholder in `library_path`, a copy of the library
+    # that is about to be packaged.
     #
-    def before_packaging
+    def before_packaging(library_path)
       return unless @config.darwin?
 
-      install_name_tool('-change', @config.libruby_path, LIBRUBY_PLACEHOLDER)
+      install_name_tool('-change', @config.libruby_path, LIBRUBY_PLACEHOLDER, library_path)
     end
 
     #
-    # Replaces the placeholder with the local libruby path, after a packaged library is unpacked.
+    # Replaces the placeholder with the local libruby path in the installed library
+    # ({Thermite::Config#ruby_extension_path}), after a packaged library is unpacked.
     #
     def after_unpacking
       return unless @config.darwin?
 
-      install_name_tool('-id', library_path)
-      install_name_tool('-change', LIBRUBY_PLACEHOLDER, @config.libruby_path)
+      library_path = @config.ruby_extension_path
+      install_name_tool('-id', library_path, library_path)
+      install_name_tool('-change', LIBRUBY_PLACEHOLDER, @config.libruby_path, library_path)
     end
 
     private
 
-    def library_path
-      @config.ruby_extension_path
-    end
-
     def install_name_tool(*args)
-      @runner.system('install_name_tool', *args, library_path)
+      @runner.system('install_name_tool', *args)
     end
   end
 end

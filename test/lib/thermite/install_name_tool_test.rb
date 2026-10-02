@@ -42,17 +42,17 @@ module Thermite
 
     def test_does_nothing_on_linux
       tool = install_name_tool(build_config(options: { ruby_project_path: '/project' }))
-      tool.before_packaging
+      tool.before_packaging('/tmp/staged/lib/test_crate.so')
       tool.after_unpacking
 
       assert_empty runner.commands
     end
 
     def test_before_packaging_on_darwin
-      install_name_tool(darwin_config).before_packaging
+      install_name_tool(darwin_config).before_packaging('/tmp/staged/lib/test_crate.so')
 
       assert_equal [['install_name_tool', '-change', '/opt/ruby/lib/libruby.2.7.dylib',
-                     '@libruby_path@', '/project/lib/test_crate.so']],
+                     '@libruby_path@', '/tmp/staged/lib/test_crate.so']],
                    runner.commands
     end
 

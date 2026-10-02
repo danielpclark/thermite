@@ -18,8 +18,10 @@
 # OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 require 'archive/tar/minitar'
+require 'fileutils'
 require 'rubygems/package'
 require 'thermite/install_name_tool'
+require 'tmpdir'
 require 'zlib'
 
 module Thermite
@@ -41,15 +43,19 @@ module Thermite
     #
     # Builds a tarball of the Rust-compiled shared library, in the current working directory.
     #
+    # A copy of the library is packaged, so that preparing it for other machines leaves the
+    # installed library usable.
+    #
     # @return [String] the filename of the tarball.
     #
     def build
       filename = @config.tarball_filename(@config.crate_version)
       relative_library_path = @config.ruby_extension_path.sub("#{@config.ruby_toplevel_dir}/", '')
-      @install_name_tool.before_packaging
       Zlib::GzipWriter.open(filename) do |tgz|
-        Dir.chdir(@config.ruby_toplevel_dir) do
-          Archive::Tar::Minitar.pack(relative_library_path, tgz)
+        with_staged_library(relative_library_path) do |staging_dir|
+          Dir.chdir(staging_dir) do
+            Archive::Tar::Minitar.pack(relative_library_path, tgz)
+          end
         end
       end
 
@@ -82,6 +88,21 @@ module Thermite
     end
 
     private
+
+    #
+    # Copies the library to `relative_library_path` in a temporary directory, prepares the copy
+    # for packaging, and yields the directory.
+    #
+    def with_staged_library(relative_library_path)
+      Dir.mktmpdir('thermite_package') do |staging_dir|
+        staged_library = File.join(staging_dir, relative_library_path)
+        FileUtils.mkdir_p(File.dirname(staged_library))
+        FileUtils.cp(@config.ruby_extension_path, staged_library)
+        @install_name_tool.before_packaging(staged_library)
+
+        yield staging_dir
+      end
+    end
 
     def each_compressed_file(tgz)
       Zlib::GzipReader.wrap(tgz) do |gz|
