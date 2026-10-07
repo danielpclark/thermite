@@ -24,7 +24,6 @@ Gem::Specification.new do |s|
   s.add_dependency 'rexml', '~> 3.0'
   s.add_dependency 'tomlrb', '~> 2.0'
   s.add_development_dependency 'minitest', '~> 5.14'
-  s.add_development_dependency 'rubocop', '~> 1.80'
   s.add_development_dependency 'yard', '~> 0.9'
   s.metadata['rubygems_mfa_required'] = 'true'
 end

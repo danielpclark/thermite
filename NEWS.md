@@ -17,7 +17,8 @@
 
 * The default `git_tag_regex` conforms more to the semantic versioning 2.0.0 spec (#46)
 * Ruby 2.5 or later is required
-* RuboCop 1.x checks the code (0.93 could not run on Ruby 3.4)
+* RuboCop 1.x checks the code (0.93 could not run on Ruby 3.4); as it needs Ruby 2.7, the
+  Gemfile leaves it out on older Rubies
 * The helper modules that `Thermite::Tasks` included (`Cargo`, `CustomBinary`,
   `GithubReleaseBinary`, `Package` and `Util`) are replaced by classes that are given their
   dependencies explicitly. Code that included those modules, or called their methods on a
