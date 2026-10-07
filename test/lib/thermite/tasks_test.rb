@@ -91,7 +91,7 @@ module Thermite
     end
 
     def without_cargo
-      original = ENV['CARGO']
+      original = ENV.fetch('CARGO', nil)
       ENV['CARGO'] = File.join(Dir.tmpdir, 'thermite-missing-cargo')
       yield
     ensure

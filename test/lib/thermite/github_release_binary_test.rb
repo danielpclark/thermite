@@ -52,6 +52,16 @@ module Thermite
       assert github_release_binary(config, FakeDownloader.new([uri])).download
     end
 
+    def test_download_version_option_from_github_release
+      config = build_config(options: { github_releases: true, version: '7.8.9' },
+                            cargo_toml: package_toml)
+      uri = release_uri(config, 'v7.8.9', '7.8.9')
+      downloader = FakeDownloader.new([uri])
+
+      assert github_release_binary(config, downloader).download
+      assert_equal [[uri, 'Downloading compiled version (7.8.9) from GitHub']], downloader.installed
+    end
+
     def test_download_cargo_version_from_github_release_not_found
       config = build_config(options: { github_releases: true }, cargo_toml: package_toml)
 

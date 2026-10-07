@@ -44,7 +44,7 @@ module Thermite
     #
     # If the `github_release_type` is `'latest'`, it will attempt to use the appropriate binary for
     # the latest version in GitHub releases. Otherwise, it will download the appropriate binary for
-    # the crate version given in `Cargo.toml`.
+    # the `version` option (by default, the crate version given in `Cargo.toml`).
     #
     # @return [Boolean] whether a binary was found and installed.
     #
@@ -61,7 +61,7 @@ module Thermite
     private
 
     def download_cargo_version
-      version = @config.crate_version
+      version = @config.version
       tag = format(@config.git_tag_format, version)
       install(tag, version)
     end

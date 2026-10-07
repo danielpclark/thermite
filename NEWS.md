@@ -1,19 +1,23 @@
 # Changes by Version
 
-## Unreleased
+## [0.14.0] - 2026-10-07
 
 ### Added
 
+* A `version` option (also settable in `package.metadata.thermite`): the version that names the
+  tarball built by `thermite:tarball` and the release it is downloaded from, for gems whose
+  version is not their crate's. Defaults to the crate version, as before
 * `cargo` is run with the `RUBY` environment variable set to the Ruby running Thermite (unless it
   is already set), so that Rutie and `rb-sys` build scripts link to the right libruby
-* An opt-in integration test that builds, tests, packages and loads a Rutie 0.10.2 extension
+* An opt-in integration test that builds, tests, packages and loads a Rutie 0.13.1 extension
 * GitHub Actions CI on Linux, macOS and Windows (replacing Travis CI and AppVeyor), including the
-  Rutie integration test on Ruby 2.5 to 2.7
+  Rutie integration test on Ruby 3.2 to 3.4
 
 ### Changed
 
 * The default `git_tag_regex` conforms more to the semantic versioning 2.0.0 spec (#46)
-* Ruby 2.5 or later is required (the oldest Ruby supported by Rutie 0.10)
+* Ruby 2.5 or later is required
+* RuboCop 1.x checks the code (0.93 could not run on Ruby 3.4)
 * The helper modules that `Thermite::Tasks` included (`Cargo`, `CustomBinary`,
   `GithubReleaseBinary`, `Package` and `Util`) are replaced by classes that are given their
   dependencies explicitly. Code that included those modules, or called their methods on a
@@ -30,6 +34,7 @@
 ### Fixed
 
 * `rexml` is declared as a dependency, since it is not a default gem since Ruby 3.0
+* The default `git_tag_regex` matched any character between the version numbers, not only a dot
 * On macOS, `thermite:tarball` no longer leaves the built library unloadable: the libruby path
   is now rewritten in a copy of the library that is packaged, not in the installed library
 * Too many HTTP redirects raised a `NameError` instead of a redirect error

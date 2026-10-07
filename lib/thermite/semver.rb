@@ -45,6 +45,6 @@ module Thermite
     #
     # Semantic version-compliant regular expression.
     #
-    VERSION = "v?#{NUMERIC}\.#{NUMERIC}\.#{NUMERIC}(?:#{PRERELEASE})?(?:#{BUILD_METADATA})?"
+    VERSION = "v?#{NUMERIC}\\.#{NUMERIC}\\.#{NUMERIC}(?:#{PRERELEASE})?(?:#{BUILD_METADATA})?"
   end
 end

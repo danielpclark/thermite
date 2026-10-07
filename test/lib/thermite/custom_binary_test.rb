@@ -42,6 +42,16 @@ module Thermite
       assert_equal [[uri, 'Downloading compiled version (4.5.6)']], downloader.installed
     end
 
+    def test_download_binary_with_version_option
+      uri_format = 'http://example.com/download/%<version>s/%<filename>s'
+      config = build_config(options: { binary_uri_format: uri_format, version: '7.8.9' })
+      uri = "http://example.com/download/7.8.9/#{config.tarball_filename('7.8.9')}"
+      downloader = FakeDownloader.new([uri])
+
+      assert custom_binary(config, downloader).download
+      assert_equal [[uri, 'Downloading compiled version (7.8.9)']], downloader.installed
+    end
+
     def test_download_binary_from_custom_uri_not_found
       config = build_config(options: { binary_uri_format: 'http://example.com/%<filename>s' })
 

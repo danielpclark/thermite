@@ -34,15 +34,15 @@ module Thermite
     #
     # Downloads a Rust binary using a custom URI format, given the target OS and architecture.
     #
-    # Requires the `binary_uri_format` option to be set. The version of the binary is determined by
-    # the crate version given in `Cargo.toml`.
+    # Requires the `binary_uri_format` option to be set. The version of the binary is the `version`
+    # option (by default, the crate version given in `Cargo.toml`).
     #
     # @return [Boolean] whether a binary was found and installed.
     #
     def download
       return false unless @config.binary_uri_format
 
-      version = @config.crate_version
+      version = @config.version
       uri = format(@config.binary_uri_format,
                    filename: @config.tarball_filename(version),
                    version: version)

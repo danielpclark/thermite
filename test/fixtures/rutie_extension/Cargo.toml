@@ -1,14 +1,14 @@
 [package]
 name = "rutie-thermite-example"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
 publish = false
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-rutie = "=0.10.2"
+rutie = "=0.13.1"
 
 # Keeps this fixture out of any enclosing Cargo workspace.
 [workspace]

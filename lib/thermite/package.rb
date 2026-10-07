@@ -49,7 +49,7 @@ module Thermite
     # @return [String] the filename of the tarball.
     #
     def build
-      filename = @config.tarball_filename(@config.crate_version)
+      filename = @config.tarball_filename(@config.version)
       relative_library_path = @config.ruby_extension_path.sub("#{@config.ruby_toplevel_dir}/", '')
       Zlib::GzipWriter.open(filename) do |tgz|
         with_staged_library(relative_library_path) do |staging_dir|
@@ -80,9 +80,7 @@ module Thermite
       Dir.chdir(@config.ruby_toplevel_dir) do
         each_compressed_file(tgz) do |path, entry|
           @logger.debug "Unpacking file: #{path}"
-          File.open(path, 'wb') do |f|
-            f.write(entry.read)
-          end
+          File.binwrite(path, entry.read)
         end
       end
     end
