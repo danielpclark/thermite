@@ -59,7 +59,7 @@ module Thermite
     #   setting this option overrides the `github_releases` option.
     #   Example: `https://example.com/download/%{version}/%{filename}`. Replacement variables:
     #     - `filename` - The value of {Config#tarball_filename}
-    #     - `version` - the crate version from the `Cargo.toml` file
+    #     - `version` - the `version` option (described below)
     # * `cargo_project_path` - the path to the Cargo project. Defaults to the current
     #   working directory.
     # * `cargo_workspace_member` - if set, the relative path to the Cargo workspace member. Usually
@@ -67,14 +67,15 @@ module Thermite
     # * `github_releases` - whether to look for rust binaries via GitHub releases when installing
     #   the gem, and `cargo` is not found. Defaults to `false`.
     # * `github_release_type` - when `github_releases` is `true`, the mode to use to download the
-    #   Rust binary from GitHub releases. `'cargo'` (the default) uses the version in `Cargo.toml`,
-    #   along with the `git_tag_format` option (described below) to determine the download URI.
+    #   Rust binary from GitHub releases. `'cargo'` (the default) uses the `version` option
+    #   (described below), along with the `git_tag_format` option (described below) to determine
+    #   the download URI.
     #   `'latest'` takes the latest release matching the `git_tag_regex` option (described below) to
     #   determine the download URI.
     # * `git_tag_format` - when `github_release_type` is `'cargo'` (the default), the
     #   [format string](http://ruby-doc.org/core/String.html#method-i-25) used to determine the
-    #   tag used in the GitHub download URI. Defaults to `v%s`, where `%s` is the version in
-    #   `Cargo.toml`.
+    #   tag used in the GitHub download URI. Defaults to `v%s`, where `%s` is the `version` option
+    #   (described below).
     # * `git_tag_regex` - when `github_releases` is enabled and `github_release_type` is
     #   `'latest'`, a regular expression (expressed as a `String`) that determines which tagged
     #   releases to look for precompiled Rust tarballs. One group must be specified that indicates
@@ -89,6 +90,9 @@ module Thermite
     #   current working directory.
     # * `ruby_extension_dir` - the directory relative to `ruby_project_path` where the extension is
     #   located. Defaults to `lib`.
+    # * `version` - the version of the extension, which names the tarball built by
+    #   `thermite:tarball` and the release it is downloaded from. Defaults to the crate version in
+    #   `Cargo.toml`; set it to the gem's version (e.g. `MyGem::VERSION`) when the two differ.
     #
     # These values can be overridden by values with the same key name in the
     # `package.metadata.thermite` section of `Cargo.toml`, if that section exists. The exceptions

@@ -19,7 +19,6 @@
 
 require 'bundler/gem_tasks'
 require 'rake/testtask'
-require 'rubocop/rake_task'
 require 'yard'
 
 Rake::TestTask.new do |t|
@@ -27,6 +26,14 @@ Rake::TestTask.new do |t|
   t.test_files = FileList['test/**/*_test.rb']
 end
 YARD::Rake::YardocTask.new
-RuboCop::RakeTask.new
 
-task default: %w[rubocop yard test]
+# RuboCop 1.x needs Ruby 2.7, so it is not in the bundle on older Rubies
+begin
+  require 'rubocop/rake_task'
+  RuboCop::RakeTask.new
+  task default: %w[rubocop]
+rescue LoadError
+  nil
+end
+
+task default: %w[yard test]

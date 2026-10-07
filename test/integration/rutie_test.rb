@@ -24,22 +24,22 @@ require 'thermite/tasks'
 
 module Thermite
   #
-  # Builds, tests, packages and loads a real Rutie 0.10.2 extension with Thermite.
+  # Builds, tests, packages and loads a real Rutie 0.13.1 extension with Thermite.
   #
-  # Opt-in, since it needs Cargo, network access to crates.io and a Ruby that Rutie 0.10 supports
-  # (2.5 to 2.7, built with `--enable-shared`):
+  # Opt-in, since it needs Cargo, network access to crates.io and a Ruby that Rutie 0.13 supports
+  # (3.2 to 3.4, built with `--enable-shared`):
   #
   #     THERMITE_RUTIE_INTEGRATION=1 rake test
   #
   class RutieIntegrationTest < Minitest::Test
     include Thermite::ConfigHelper
 
-    RUTIE_RUBY_VERSIONS = Gem::Requirement.new('>= 2.5', '< 3.0')
+    RUTIE_RUBY_VERSIONS = Gem::Requirement.new('>= 3.2', '< 3.5')
 
     def setup
       skip 'Set THERMITE_RUTIE_INTEGRATION=1 to run' unless ENV['THERMITE_RUTIE_INTEGRATION']
       unless RUTIE_RUBY_VERSIONS.satisfied_by?(Gem::Version.new(RUBY_VERSION))
-        skip "Rutie 0.10 does not support Ruby #{RUBY_VERSION}"
+        skip "Rutie 0.13 does not support Ruby #{RUBY_VERSION}"
       end
       # Required only once the test runs: Fiddle is not a default gem since Ruby 4.0, which this
       # test skips.
@@ -93,7 +93,7 @@ module Thermite
       install_dir = copy_fixture
       install_options = { cargo_project_path: install_dir, ruby_project_path: install_dir }
       install_config = Thermite::Config.new(install_options)
-      tarball = File.join(project_dir, config.tarball_filename(config.crate_version))
+      tarball = File.join(project_dir, config.tarball_filename(config.version))
       package = Thermite::Package.new(install_config, logger: Thermite::DebugLog.new(nil))
 
       File.open(tarball, 'rb') { |tgz| package.install(tgz) }

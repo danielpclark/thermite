@@ -84,13 +84,14 @@ Possible options:
 * `github_releases` - whether to look for Rust binaries via GitHub releases when installing
   the gem, and `cargo` is not found. Defaults to `false`.
 * `github_release_type` - when `github_releases` is `true`, the mode to use to download the Rust
-  binary from GitHub releases. `'cargo'` (the default) uses the version in `Cargo.toml`, along with
-  the `git_tag_format` option (described below) to determine the download URI. `'latest'` takes the
+  binary from GitHub releases. `'cargo'` (the default) uses the `version` option (described below),
+  along with the `git_tag_format` option (described below) to determine the download URI. `'latest'` takes the
   latest release matching the `git_tag_regex` option (described below) to determine the download
   URI.
 * `git_tag_format` - when `github_release_type` is `'cargo'` (the default), the
   [format string](http://ruby-doc.org/core/String.html#method-i-25) used to determine the tag used
-  in the GitHub download URI. Defaults to `v%s`, where `%s` is the version in `Cargo.toml`.
+  in the GitHub download URI. Defaults to `v%s`, where `%s` is the `version` option (described
+  below).
 * `git_tag_regex` - when `github_releases` is enabled and `github_release_type` is `'latest'`, a
   regular expression (expressed as a `String`) that determines which tagged releases to look for
   precompiled Rust tarballs. One group must be specified that indicates the version number to be
@@ -105,10 +106,13 @@ Possible options:
   current working directory.
 * `ruby_extension_dir` - the directory relative to `ruby_project_path` where the extension is
   located. Defaults to `lib`.
+* `version` - the version of the extension, which names the tarball built by `thermite:tarball`
+  and the release it is downloaded from. Defaults to the crate version in `Cargo.toml`; set it to
+  the gem's version (e.g. `MyGem::VERSION`) when the two differ.
 
 ### Example: Rutie
 
-[Rutie](https://github.com/danielpclark/rutie) 0.10 supports Ruby 2.5 to 2.7 (built with
+[Rutie](https://github.com/danielpclark/rutie) 0.13 supports Ruby 3.2 to 3.4 (built with
 `--enable-shared`). Declare the crate as a `cdylib` in `Cargo.toml`:
 
 ```toml
@@ -116,7 +120,7 @@ Possible options:
 crate-type = ["cdylib"]
 
 [dependencies]
-rutie = "0.10.2"
+rutie = "0.13.1"
 ```
 
 Write an `Init_<library name>` function in `src/lib.rs`, as described in Rutie's README, then build
@@ -138,7 +142,7 @@ Rutie's build script links to whichever Ruby the `RUBY` environment variable nam
 `ruby` in the `PATH`). Thermite sets `RUBY` to the interpreter running Rake, unless it is already
 set, so the extension always links to the same libruby that later loads it.
 
-`test/fixtures/rutie_extension` contains a complete Rutie 0.10.2 extension. The integration test
+`test/fixtures/rutie_extension` contains a complete Rutie 0.13.1 extension. The integration test
 that builds, tests, packages and loads it can be run with
 `THERMITE_RUTIE_INTEGRATION=1 rake test` (it requires Cargo and a Ruby supported by Rutie).
 

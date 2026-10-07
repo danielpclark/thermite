@@ -51,6 +51,12 @@ module Thermite
       assert_equal config.tarball_filename('4.5.6'), File.basename(build_tarball(config))
     end
 
+    def test_build_with_version_option
+      config = build_config(options: { ruby_project_path: stub_project_dir, version: '7.8.9' })
+
+      assert_equal config.tarball_filename('7.8.9'), File.basename(build_tarball(config))
+    end
+
     def test_build_leaves_installed_library_unchanged
       config = build_config(options: { ruby_project_path: stub_project_dir })
       tarball_path = build_tarball(config)

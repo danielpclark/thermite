@@ -322,6 +322,15 @@ module Thermite
     end
 
     #
+    # The version of the extension: the `version` option, or {#crate_version} if it is not set.
+    # It names the tarball and the release the tarball is downloaded from, so a gem whose version
+    # is not its crate's sets it to the gem's version.
+    #
+    def version
+      options.fetch(:version) { crate_version }
+    end
+
+    #
     # The URL of the crate's repository, as specified in the TOML file.
     #
     # @raise [KeyError] if the crate does not specify a repository.

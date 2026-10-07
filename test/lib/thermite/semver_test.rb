@@ -31,6 +31,7 @@ module Thermite
     end
 
     def test_invalid_semantic_versions
+      refute_match Thermite::Config::DEFAULT_TAG_REGEX, 'v1x2x3'
       # From https://github.com/malept/thermite/pull/45
       assert_nil semantic_version_regexp.match('v0.3.2.beta13')
       assert_nil semantic_version_regexp.match('0.5.3.alpha1')

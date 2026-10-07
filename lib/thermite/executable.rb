@@ -34,7 +34,7 @@ module Thermite
     #                           Defaults to the `PATH` environment variable.
     # @return [String, nil] the path to the executable, or `nil` if it cannot be found.
     #
-    def self.find(name, path: ENV['PATH'])
+    def self.find(name, path: ENV.fetch('PATH', nil))
       if Pathname.new(name).absolute?
         executable_candidate(name)
       else

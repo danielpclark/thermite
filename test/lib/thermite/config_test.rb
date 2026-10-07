@@ -43,7 +43,7 @@ module Thermite
       assert_equal '/opt/ruby/bin/ruby', build_config.ruby_executable
       assert_equal 'C:/Ruby27/bin/ruby.exe',
                    build_config(rbconfig: { 'bindir' => 'C:/Ruby27/bin', 'EXEEXT' => '.exe' })
-        .ruby_executable
+                     .ruby_executable
       config = build_config(env: { 'RUBY' => '/usr/bin/ruby2.7' })
       assert_equal '/usr/bin/ruby2.7', config.ruby_executable
     end
@@ -109,6 +109,23 @@ module Thermite
     def test_cargo_shared_library_windows
       config = build_config(cargo_toml: package_toml, rbconfig: { 'host_os' => 'mingw32' })
       assert_equal 'barbaz.dll', config.cargo_shared_library
+    end
+
+    def test_version_defaults_to_crate_version
+      assert_equal '4.5.6', build_config(cargo_toml: package_toml).version
+    end
+
+    def test_version_option
+      config = build_config(options: { version: '7.8.9' }, cargo_toml: package_toml)
+
+      assert_equal '7.8.9', config.version
+      assert_equal '4.5.6', config.crate_version
+    end
+
+    def test_version_from_toml_config
+      toml = package_toml("[package.metadata.thermite]\nversion = \"7.8.9\"\n")
+
+      assert_equal '7.8.9', build_config(cargo_toml: toml).version
     end
 
     def test_tarball_filename

@@ -2,7 +2,12 @@ AllCops:
   Exclude:
   - 'vendor/**/*'
   NewCops: enable
+  SuggestExtensions: false
   TargetRubyVersion: 2.5
+
+# Development dependencies stay in the gemspec, as they always have.
+Gemspec/DevelopmentDependencies:
+  Enabled: false
 
 Layout/EmptyLineAfterMagicComment:
   Enabled: false
@@ -28,3 +33,7 @@ Metrics/ClassLength:
 
 Metrics/MethodLength:
   Max: 20
+
+# `install` methods answer whether they installed anything; `system` mirrors Kernel#system.
+Naming/PredicateMethod:
+  Enabled: false
